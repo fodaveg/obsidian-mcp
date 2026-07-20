@@ -132,6 +132,16 @@ scripts/
   smoke-test.mjs -> quick manual test without needing an MCP client
 ```
 
+## Disclaimer
+
+This is an independent, community-built project. It is **not affiliated with,
+endorsed by, sponsored by, or associated with Obsidian, Obsidian.md, or Dynalist
+Inc.** in any way. "Obsidian" is a trademark of its respective owner; it is used
+here only to describe interoperability. This software wraps the official Obsidian
+CLI and is provided "as is", without warranty of any kind (see the license). You
+are responsible for any changes it makes to your vault — back up your data and
+review the security note above before enabling `obsidian_exec`.
+
 ## License
 
 MIT © fodaveg
