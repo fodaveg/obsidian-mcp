@@ -72,6 +72,23 @@ this repo (`pwd` from inside the folder gives it to you):
 
 Restart Claude Desktop and the `obsidian_*` tools should appear.
 
+## Configure it in Claude Code
+
+Register the server with the CLI (user scope makes it available in every
+project; drop `-s user` to scope it to the current repo):
+
+```bash
+claude mcp add obsidian -s user "$(which node)" /absolute/path/to/obsidian-mcp/dist/index.js
+```
+
+> Check what `which node` returns before using it: on some setups it resolves
+> to an ephemeral/cached Node (e.g. under `~/.cache/…`) that may disappear.
+> Prefer a stable absolute path (your nvm/Homebrew Node) as the `command`.
+
+Verify it connected with `claude mcp list` (look for `obsidian … ✔ Connected`).
+Because the tool list is loaded at startup, restart Claude Code once after
+registering so the `obsidian_*` tools appear.
+
 ## Environment variables
 
 | Variable | What it does | Default |
