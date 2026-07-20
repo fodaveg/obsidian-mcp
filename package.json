@@ -1,0 +1,50 @@
+{
+  "name": "obsidian-mcp",
+  "version": "0.1.0",
+  "description": "MCP server that wraps the official Obsidian CLI, exposing your vault to Claude and other MCP clients.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "obsidian-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "obsidian",
+    "obsidian-cli",
+    "claude",
+    "llm"
+  ],
+  "scripts": {
+    "build": "tsc -p .",
+    "start": "node dist/index.js",
+    "dev": "tsc -p . --watch",
+    "prepublishOnly": "npm run build"
+  },
+  "author": "fodaveg",
+  "license": "MIT",
+  "homepage": "https://github.com/fodaveg/obsidian-mcp#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fodaveg/obsidian-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/fodaveg/obsidian-mcp/issues"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
