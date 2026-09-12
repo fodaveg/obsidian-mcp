@@ -905,9 +905,30 @@ server.registerTool(
   "obsidian_tasks_list",
   {
     title: "List tasks",
-    description: "Lists tasks (checkboxes) found across the vault.",
+    description:
+      "Lists tasks (checkboxes) found across the vault, and is also where the `ref` (path:line) " +
+      "that obsidian_task_complete needs comes from. Scope it whenever you can: an unfiltered " +
+      "listing of a working vault runs into the thousands of entries, so asking for the note " +
+      "that holds the task is both cheaper and more precise. Give at most one scope -- `file` / " +
+      "`path` (one note), `active` (the note open in Obsidian) or `daily` (today's daily note); " +
+      "with none of them it covers the whole vault.",
     annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: {
+      file: fileParam,
+      path: pathParam,
+      active: z.boolean().default(false).describe("Only the tasks of the note currently open in Obsidian."),
+      daily: z.boolean().default(false).describe("Only the tasks of today's daily note."),
+      state: z
+        .enum(["todo", "done"])
+        .optional()
+        .describe("Keep only the incomplete (todo) or the completed (done) tasks. Omit for both."),
+      status: z
+        .string()
+        .optional()
+        .describe(
+          'Filter by status character, for vaults with custom checkbox states, e.g. "/" (in ' +
+            'progress) or "-" (cancelled). For the plain done/not-done split use `state`.'
+        ),
       json: z.boolean().default(true),
       verbose: z
         .boolean()
@@ -919,8 +940,28 @@ server.registerTool(
       total: totalParam,
     },
   },
-  async ({ json, verbose, total }) =>
-    respond(["tasks", ...kv({ format: json ? "json" : undefined, verbose, total })])
+  async ({ file, path, active, daily, state, status, json, verbose, total }) => {
+    // The CLI takes each of these scopes as a separate token and we have not measured which one
+    // wins when they are combined, so rather than guess we ask for one.
+    if ([Boolean(file || path), active, daily].filter(Boolean).length > 1) {
+      return errorResult("Pick a single scope: `file`/`path`, `active` or `daily`.");
+    }
+    return respond([
+      "tasks",
+      ...kv({
+        file,
+        path,
+        active,
+        daily,
+        done: state === "done",
+        todo: state === "todo",
+        status,
+        format: json ? "json" : undefined,
+        verbose,
+        total,
+      }),
+    ]);
+  }
 );
 
 server.registerTool(
