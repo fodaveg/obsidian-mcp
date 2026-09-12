@@ -331,6 +331,44 @@ server.registerTool(
     ])
 );
 
+server.registerTool(
+  "obsidian_search_context",
+  {
+    title: "Search the vault with matching lines",
+    description:
+      "Full-text search that returns the matching lines themselves, with the text around them, " +
+      "instead of just the file names. Prefer it over obsidian_search whenever you want to know " +
+      "what a note says about something: it usually answers the question outright and saves " +
+      "reading the notes one by one. Use plain obsidian_search when you only need the list of " +
+      "files, or when the query would match too much to read. Same query syntax, including " +
+      'filters like "[tag:project]". This command has no `total`: count with obsidian_search.',
+    annotations: { readOnlyHint: true, openWorldHint: true },
+    inputSchema: {
+      query: z.string(),
+      path: z.string().optional().describe('Limit the search to one folder, e.g. "33.11 Notes".'),
+      limit: z
+        .number()
+        .int()
+        .positive()
+        .default(20)
+        .describe(
+          "Max files to return. Defaults to 20, lower than obsidian_search because each hit " +
+            "brings its surrounding lines along."
+        ),
+      caseSensitive: z.boolean().default(false).describe("Match upper/lower case exactly."),
+      json: z
+        .boolean()
+        .default(true)
+        .describe("Return machine-readable JSON instead of the CLI's plain-text rendering."),
+    },
+  },
+  async ({ query, path, limit, caseSensitive, json }) =>
+    respond([
+      "search:context",
+      ...kv({ query, path, limit, case: caseSensitive, format: json ? "json" : undefined }),
+    ])
+);
+
 // ---------------------------------------------------------------------------
 // Daily notes
 // ---------------------------------------------------------------------------
