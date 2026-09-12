@@ -208,9 +208,9 @@ your MCP client.
 | `obsidian_orphans` | List notes with no links either way | — | |
 | `obsidian_unresolved_links` | List links that point nowhere | — | |
 | `obsidian_deadends` | List notes that link to nothing | `all`, `total` | |
-| `obsidian_tasks_list` | List tasks (checkboxes), across the vault or in one note | `file` \| `path`, `active`, `daily`, `state` (`todo`/`done`), `status`, `json`, `verbose`, `total` | |
+| `obsidian_tasks_list` | List tasks (checkboxes), across the vault or in one note | `file` \| `path`, `active`, `daily`, `state` (`todo`/`done`), `status`, `json`, `total` | |
 | `obsidian_task_create` | Append a `- [ ] …` line to a note, or to today's daily note when no note is given | `content`, `tags`, `file` \| `path` | ✔ |
-| `obsidian_task_complete` | Mark a task as done | `ref` (`path:line`, as `obsidian_tasks_list` returns it with `verbose`), or `path` + `line` | ✔ |
+| `obsidian_task_complete` | Mark a task as done | `ref` (`path:line`, the `file` and `line` of an `obsidian_tasks_list` entry), or `path` + `line` | ✔ |
 | `obsidian_sync_status` | Report whether Obsidian Sync is connected and up to date | — | |
 | `obsidian_history` | List a note's stored versions (file recovery / Sync history) | `file` \| `path` | |
 | `obsidian_history_read` | Read one stored version of a note. Reading only — restoring is deliberately **not** exposed | `file` \| `path`, `version` | |

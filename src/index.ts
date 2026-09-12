@@ -900,6 +900,11 @@ server.registerTool(
 // ---------------------------------------------------------------------------
 // Tasks
 // ---------------------------------------------------------------------------
+//
+// The CLI's `verbose` token is deliberately not exposed here. It only changes the plain-text
+// rendering (grouping by file and adding line numbers), and this tool asks for `format=json`
+// by default, where every entry already carries `file` and `line`. Advertised as "how you get
+// the ref", it was asking the model to pay for a flag that changed nothing.
 
 server.registerTool(
   "obsidian_tasks_list",
@@ -929,18 +934,18 @@ server.registerTool(
           'Filter by status character, for vaults with custom checkbox states, e.g. "/" (in ' +
             'progress) or "-" (cancelled). For the plain done/not-done split use `state`.'
         ),
-      json: z.boolean().default(true),
-      verbose: z
+      json: z
         .boolean()
-        .default(false)
+        .default(true)
         .describe(
-          "Group results by file and include line numbers, which is how you get the `ref` " +
-            "(path:line) that obsidian_task_complete needs."
+          "Return machine-readable JSON: one entry per task with its status, text, file and " +
+            "line, so `ref` is simply file:line. Set it to false for the CLI's plain-text " +
+            "rendering, which does not carry the line numbers."
         ),
       total: totalParam,
     },
   },
-  async ({ file, path, active, daily, state, status, json, verbose, total }) => {
+  async ({ file, path, active, daily, state, status, json, total }) => {
     // The CLI takes each of these scopes as a separate token and we have not measured which one
     // wins when they are combined, so rather than guess we ask for one.
     if ([Boolean(file || path), active, daily].filter(Boolean).length > 1) {
@@ -957,7 +962,6 @@ server.registerTool(
         todo: state === "todo",
         status,
         format: json ? "json" : undefined,
-        verbose,
         total,
       }),
     ]);
@@ -992,9 +996,9 @@ server.registerTool(
   {
     title: "Complete a task",
     description:
-      "Marks a task as done. Identify it with `ref` (\"path:line\", exactly as obsidian_tasks_list " +
-      "returns it with `verbose`) or with `path` plus `line`. To toggle it or set another status " +
-      "character, use obsidian_exec with the `task` command.",
+      "Marks a task as done. Identify it with `ref` (\"path:line\": the `file` and `line` of an " +
+      "obsidian_tasks_list entry, joined by a colon) or with `path` plus `line`. To toggle it or " +
+      "set another status character, use obsidian_exec with the `task` command.",
     // It overwrites the status character of an existing line, so destructiveHint is left
     // undeclared; marking the same task done twice does leave the same state.
     annotations: { idempotentHint: true, openWorldHint: true },
