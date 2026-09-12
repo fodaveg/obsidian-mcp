@@ -57,10 +57,13 @@ export const taskTools = [
       json: z
         .boolean()
         .default(true)
+        // Measured on CLI 1.14.1: `tasks total format=json` answers with the bare count, exactly
+        // as `tasks total` does. The count wins, so the pair is documented, not refused.
         .describe(
           "Return machine-readable JSON: one entry per task with its status, text, file and " +
             "line, so `ref` is simply file:line. Set it to false for the CLI's plain-text " +
-            "rendering, which does not carry the line numbers."
+            "rendering, which does not carry the line numbers. Ignored when `total` is set: " +
+            "that answers with the count either way."
         ),
       total: totalParam,
     },

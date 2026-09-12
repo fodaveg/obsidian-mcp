@@ -13,11 +13,20 @@ import { fileParam, pathParam, totalParam } from "./params.js";
  * The `format=json` switch for the three commands here that have one. Their own default is TSV;
  * this server asks for JSON like it does everywhere else, so the client also gets the rows parsed
  * as structuredContent instead of a table it has to split.
+ *
+ * WITH `total`, THE COUNT WINS. Measured on CLI 1.14.1: `tags total format=json` answers `467`
+ * and `tags total` answers `467`; `unresolved total format=json` and `unresolved total` both
+ * answer `433`; `backlinks total format=json` answers `1`. The format is simply ignored, so the
+ * pair is predictable rather than confusing and is documented instead of refused -- and since a
+ * bare count is not JSON, structuredContent is the empty object, as it is for any `total` call.
  */
 const jsonParam = z
   .boolean()
   .default(true)
-  .describe("Return machine-readable JSON instead of the CLI's tab-separated rendering.");
+  .describe(
+    "Return machine-readable JSON instead of the CLI's tab-separated rendering. Ignored when " +
+      "`total` is set: that answers with the count either way."
+  );
 
 /**
  * `all` as `orphans` and `deadends` both take it. The CLI's help calls it "include non-markdown

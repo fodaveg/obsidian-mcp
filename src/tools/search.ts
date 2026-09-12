@@ -38,7 +38,18 @@ export const searchTools = [
         .boolean()
         .default(false)
         .describe("Match upper/lower case exactly. Off by default, as in Obsidian's own search."),
-      json: z.boolean().default(true).describe("Return machine-readable JSON output."),
+      // `search` is the one command measured here that does not ignore the format under `total`:
+      // on CLI 1.14.1 `search total format=json` answers `{"total":1}` where `search total`
+      // answers `1`. Either way it is a count and not the matching files, so the count still
+      // wins; the object is not the array of rows the outputSchema declares, so structuredContent
+      // stays empty and the text block carries it, which is what any `total` call does.
+      json: z
+        .boolean()
+        .default(true)
+        .describe(
+          'Return machine-readable JSON output. With `total` the answer is `{"total": n}` -- ' +
+            "still the count, not the matching files."
+        ),
       total: totalParam,
     },
     command: "search",

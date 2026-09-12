@@ -252,6 +252,11 @@ does not have to parse the answer out of a string it was handed.
 The text block is always there too, because the spec asks for it and because a
 client that ignores `structuredContent` would otherwise receive nothing.
 
+`total` wins over `json` in the tools that accept both: measured on CLI 1.14.1,
+`tags`, `unresolved`, `backlinks` and `tasks` ignore the format and answer with
+the bare count, and `search` answers `{"total": n}`. Either way the answer is a
+count rather than the rows, so those calls have no structured content.
+
 The key is **absent** (`structuredContent` is then `{}`) whenever the call did not
 produce JSON: `json: false` or a `format` other than `json`, a `total` request,
 which answers with a count, an output long enough to be cut by
