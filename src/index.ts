@@ -139,6 +139,34 @@ server.registerTool(
 );
 
 server.registerTool(
+  "obsidian_outline",
+  {
+    title: "Show a note's headings",
+    description:
+      "Returns the heading tree of a note without its body. Use it before obsidian_read on a long " +
+      "note: it shows what is in there for a fraction of the context, and tells you whether the " +
+      "note is worth reading whole at all.",
+    annotations: { readOnlyHint: true, openWorldHint: true },
+    inputSchema: {
+      file: fileParam,
+      path: pathParam,
+      format: z
+        .enum(["tree", "md", "json"])
+        .default("tree")
+        .describe(
+          "tree (default, indented outline), md (the heading lines as Markdown) or json (level " +
+            "and text per heading, for when you need to process them)."
+        ),
+      total: totalParam,
+    },
+  },
+  async ({ file, path, format, total }) => {
+    if (!file && !path) return errorResult(MISSING_TARGET);
+    return respond(["outline", ...kv({ file, path, format, total })]);
+  }
+);
+
+server.registerTool(
   "obsidian_list_files",
   {
     title: "List files in the vault",

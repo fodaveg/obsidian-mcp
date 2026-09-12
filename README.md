@@ -173,6 +173,7 @@ your MCP client.
 | Tool | What it does | Main parameters | Writes |
 | --- | --- | --- | :---: |
 | `obsidian_read` | Read a note | `file` \| `path` | |
+| `obsidian_outline` | Show a note's heading tree without its body | `file` \| `path`, `format` (`tree`/`md`/`json`), `total` | |
 | `obsidian_list_files` | List files in the vault (plain text, one path per line — the CLI's `files` command has no JSON output) | `folder`, `ext` | |
 | `obsidian_list_folders` | List the folder structure | `tree` | |
 | `obsidian_create` | Create a note | `name`, `path`, `content`, `template`, `overwrite` | ✔ |
