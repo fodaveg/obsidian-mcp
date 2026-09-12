@@ -23,7 +23,14 @@ const server = new McpServer({
   version: "0.1.0",
 });
 
-/** Runs the CLI and turns the result into a CallToolResult. */
+/**
+ * Runs the CLI and turns the result into a CallToolResult.
+ *
+ * `result.ok` is false both when the binary exits non-zero and when it reports one of its own
+ * errors on stdout while exiting 0 (see looksLikeCliError in cli.ts), which is what it does for
+ * a missing note or an out-of-range line. Every tool goes through here, so the detection is
+ * shared rather than repeated per tool.
+ */
 async function respond(args: string[]) {
   const result: CliResult = await runCli(withVault(args));
   return {
@@ -749,6 +756,8 @@ server.registerTool(
       const result: CliResult = await runCli(
         withVault(["property:set", `name=${name}`, `value=${value}`, ...kv({ type, file, path })])
       );
+      // One failed key fails the batch: the CLI answers `Error: Invalid number: a,b` on stdout
+      // with exit code 0, so without this the whole call would be reported as a success.
       if (!result.ok) failed = true;
       lines.push(`${name}: ${formatResult(result)}`);
     }

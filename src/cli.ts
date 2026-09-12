@@ -116,6 +116,25 @@ export function truncationNotice(droppedBytes: number, maxBytes: number): string
 }
 
 /**
+ * True when the CLI's output is one of its own error messages.
+ *
+ * The binary reports failures on stdout and still exits with 0: a missing note answers
+ * `Error: File "x.md" not found.`, an unknown command answers `Error: Command "x" not found.`,
+ * and both leave stderr empty. Going by the exit code alone therefore turns every failure into
+ * a successful tool call whose text happens to say "Error".
+ *
+ * The match is deliberately narrow -- a SINGLE line starting with `Error: ` -- because the
+ * output of `read` is the note itself, and a note that happens to open with a line like
+ * "Error: connection refused" (a pasted log, a troubleshooting note) must not be reported as a
+ * failed read. The CLI's own errors are always one line; a note that starts like one is not.
+ */
+export function looksLikeCliError(stdout: string): boolean {
+  const text = stdout.trim();
+  if (!text.startsWith("Error: ")) return false;
+  return !text.includes("\n");
+}
+
+/**
  * Runs `obsidian <args...>` and captures the result. Never throws for a non-zero
  * exit code -- callers get `ok: false` plus stdout/stderr so the model can decide
  * what to do (e.g. surface the CLI's own error message back to the user).
@@ -164,12 +183,16 @@ export function runCli(args: string[]): Promise<CliResult> {
         );
         return;
       }
+      const text = stdout.text().trim();
+      const truncatedBytes = stdout.dropped + stderr.dropped;
       const result: CliResult = {
-        ok: code === 0,
+        // A truncated stream is exempt from the text check: the cap can leave any long output
+        // looking like a single line, and a real CLI error is short enough never to be cut.
+        ok: code === 0 && !(truncatedBytes === 0 && looksLikeCliError(text)),
         code,
-        stdout: stdout.text().trim(),
+        stdout: text,
         stderr: stderr.text().trim(),
-        truncatedBytes: stdout.dropped + stderr.dropped,
+        truncatedBytes,
       };
       const parsed = tryParseJson(result.stdout);
       if (parsed !== undefined) result.json = parsed;
@@ -224,6 +247,10 @@ export function formatResult(result: CliResult): string {
   const lines: string[] = [];
   if (result.ok) {
     lines.push(result.stdout || "(no output)");
+  } else if (result.code === 0) {
+    // The failure was spotted in the output, not in the exit code: the CLI's own one-line
+    // message is the whole story, and quoting the exit code here would only confuse.
+    lines.push(result.stdout);
   } else {
     // stderr first: on a failure it carries the actionable message, and the exit code on its
     // own says nothing. The code goes last, as a footnote.
