@@ -182,6 +182,9 @@ your MCP client.
 | `obsidian_delete` | Delete a note (trash unless `permanent`) | `file` \| `path`, `permanent` | ✔ |
 | `obsidian_search` | Search the vault and return the matching files, with filters like `[tag:project]`, `[status:active]`, `[priority:>3]` inside the query | `query`, `path`, `limit`, `caseSensitive`, `json`, `total` | |
 | `obsidian_search_context` | Search and return the matching **lines** with their surrounding text, not just the file names | `query`, `path`, `limit`, `caseSensitive`, `json` | |
+| `obsidian_bases` | List the vault's bases (`.base` files) | — | |
+| `obsidian_base_views` | List the views of the base **currently open** in Obsidian (the CLI command takes no target) | — | |
+| `obsidian_base_query` | Run a base and return its rows | `file` \| `path`, `view`, `format` (`json`/`csv`/`tsv`/`md`/`paths`) | |
 | `obsidian_daily_read` | Read today's daily note (or another date's) | `date` | |
 | `obsidian_daily_append` | Append to today's daily note | `content` | ✔ |
 | `obsidian_daily_prepend` | Insert at the start of today's daily note | `content` | ✔ |
