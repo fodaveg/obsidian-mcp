@@ -7,6 +7,7 @@ import { z } from "zod";
 
 import { structuredData } from "../dist/structured.js";
 import { taskTools } from "../dist/tools/tasks.js";
+import { propertyTools } from "../dist/tools/properties.js";
 
 /** A CliResult as cli.ts builds one, with the parsed JSON already in place. */
 function cliResult(stdout, { truncatedBytes = 0 } = {}) {
@@ -72,4 +73,30 @@ test("the task entry schema is the measured one: four keys, line as a string", (
 test("a tool that can also answer in plain text says so through `when`", () => {
   assert.equal(tasksList.output.when({ json: true }), true);
   assert.equal(tasksList.output.when({ json: false }), false);
+});
+
+// --- The one answer that is an object, not a list --------------------------
+
+const propertiesGet = propertyTools.find((tool) => tool.name === "obsidian_properties_get");
+
+test("a note's properties come back as the object the CLI sends", () => {
+  // Measured on CLI 1.14.1: `properties format=json path=<note>` answers with the frontmatter as
+  // one object, values as they were written.
+  const frontmatter = { jd: "12.32", tipo: "id", tags: ["car", "home"], pinned: true };
+  const json = JSON.stringify(frontmatter);
+  assert.deepEqual(structuredData(cliResult(json), "properties", propertiesGet.output.schema), {
+    properties: frontmatter,
+  });
+
+  // A note with no frontmatter still answers with an object, and an empty one is data.
+  assert.deepEqual(structuredData(cliResult("{}"), "properties", propertiesGet.output.schema), {
+    properties: {},
+  });
+
+  // The YAML rendering is not JSON at all, and a list is not the shape declared: both stay out.
+  assert.deepEqual(structuredData(cliResult("jd: 12.32\ntipo: id"), "properties", propertiesGet.output.schema), {});
+  assert.deepEqual(structuredData(cliResult('[{"jd":"12.32"}]'), "properties", propertiesGet.output.schema), {});
+
+  assert.equal(propertiesGet.output.when({ json: true }), true);
+  assert.equal(propertiesGet.output.when({ json: false }), false);
 });

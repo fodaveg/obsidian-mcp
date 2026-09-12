@@ -81,14 +81,23 @@ export const fileTools = [
   defineTool({
     name: "obsidian_list_folders",
     title: "List folders in the vault",
-    description: "Lists the vault's folder structure.",
+    description:
+      "Lists the vault's folder structure, one folder per line, or only what hangs below one " +
+      "folder when `folder` is given.",
     annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: {
+      folder: z
+        .string()
+        .optional()
+        .describe(
+          'Only this folder and the ones under it, e.g. "33 Notes". Omit for the whole vault.'
+        ),
       tree: z.boolean().default(false).describe("Render as a hierarchical tree instead of a flat list."),
+      total: totalParam,
     },
     command: "folders",
     tier: "slow",
-    tokens: ({ tree }) => kv({ format: tree ? "tree" : undefined }),
+    tokens: ({ folder, tree, total }) => kv({ folder, format: tree ? "tree" : undefined, total }),
   }),
 
   defineTool({

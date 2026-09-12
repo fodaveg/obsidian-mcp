@@ -4,6 +4,7 @@
 import { z } from "zod";
 
 import { formatResult, kv, runCli, withVault, type CliResult } from "../cli.js";
+import { jsonObject } from "../structured.js";
 import { defineTool } from "./registry.js";
 import { fileParam, pathParam } from "./params.js";
 
@@ -13,11 +14,31 @@ export const propertyTools = [
     title: "Get a note's properties",
     description: "Reads the YAML frontmatter/properties of a note.",
     annotations: { readOnlyHint: true, openWorldHint: true },
-    inputSchema: { file: fileParam, path: pathParam },
+    inputSchema: {
+      file: fileParam,
+      path: pathParam,
+      json: z
+        .boolean()
+        .default(true)
+        .describe(
+          "Return machine-readable JSON instead of the CLI's YAML rendering, and hand the same " +
+            "object back as structured content."
+        ),
+    },
     requireTarget: true,
     command: "properties",
     tier: "quick",
-    tokens: ({ file, path }) => kv({ file, path }),
+    tokens: ({ file, path, json }) => kv({ file, path, format: json ? "json" : undefined }),
+    output: {
+      key: "properties",
+      schema: jsonObject,
+      // The CLI's own default here is yaml, not tsv as in the listing commands, so `json: false`
+      // is a real choice and not just an older rendering.
+      description:
+        "The note's frontmatter as the CLI's own JSON object, property name -> value. Absent " +
+        "when the call asked for YAML and when the output had to be truncated.",
+      when: ({ json }) => json,
+    },
   }),
 
   defineTool({

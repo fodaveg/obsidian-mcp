@@ -19,6 +19,19 @@ const jsonParam = z
   .default(true)
   .describe("Return machine-readable JSON instead of the CLI's tab-separated rendering.");
 
+/**
+ * `all` as `orphans` and `deadends` both take it. The CLI's help calls it "include non-markdown
+ * files" for either command.
+ *
+ * Measured on 1.14.1 in a vault whose attachments are already in both listings (images show up
+ * without it), the counts did not move: orphans 4361 with and without, deadends 4783 with and
+ * without. So it is exposed as the CLI documents it, not as a promise about what it changes.
+ */
+const allParam = z
+  .boolean()
+  .default(false)
+  .describe("Include non-Markdown files (images, PDFs…) as well as notes.");
+
 export const linkTools = [
   defineTool({
     name: "obsidian_tags",
@@ -121,10 +134,10 @@ export const linkTools = [
       "opposite question -- notes that link to nothing -- use obsidian_deadends; the two lists " +
       "overlap without either containing the other, and a note in both is disconnected either way.",
     annotations: { readOnlyHint: true, openWorldHint: true },
-    inputSchema: { total: totalParam },
+    inputSchema: { all: allParam, total: totalParam },
     command: "orphans",
     tier: "slow",
-    tokens: ({ total }) => kv({ total }),
+    tokens: ({ all, total }) => kv({ all, total }),
   }),
 
   defineTool({
@@ -154,13 +167,7 @@ export const linkTools = [
       "and obsidian_unresolved_links (links pointing nowhere), this is the third view of a vault's " +
       "link health: dead ends are usually notes that were captured and never connected.",
     annotations: { readOnlyHint: true, openWorldHint: true },
-    inputSchema: {
-      all: z
-        .boolean()
-        .default(false)
-        .describe("Include non-Markdown files (images, PDFs…), which by definition link to nothing."),
-      total: totalParam,
-    },
+    inputSchema: { all: allParam, total: totalParam },
     command: "deadends",
     tier: "slow",
     tokens: ({ all, total }) => kv({ all, total }),

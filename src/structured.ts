@@ -29,6 +29,17 @@ import type { CliResult } from "./cli.js";
 export const jsonRows = z.array(z.unknown());
 
 /**
+ * The value schema for a command whose JSON is a single object rather than a list of rows: any
+ * keys, nothing said about the values.
+ *
+ * Measured on the Obsidian CLI 1.14.1: `properties format=json path=<note>` answers with the
+ * note's frontmatter as one object, e.g. `{"jd": "12.32", "tipo": "id", ...}`. The values are
+ * whatever the YAML held -- a string, a list, a number -- so they stay `unknown`, and a shape
+ * that turns out not to be an object at all degrades to text-only like everything else here.
+ */
+export const jsonObject = z.record(z.string(), z.unknown());
+
+/**
  * The structuredContent for one CLI result: `{ [key]: data }` when the call produced JSON that
  * fits `schema`, and `{}` when it did not.
  *

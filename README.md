@@ -191,7 +191,7 @@ your MCP client. It is also exactly the set that disappears under
 | `obsidian_read` | Read a note | `file` \| `path` | |
 | `obsidian_outline` | Show a note's heading tree without its body | `file` \| `path`, `format` (`tree`/`md`/`json`), `total` | |
 | `obsidian_list_files` | List files in the vault (plain text, one path per line — the CLI's `files` command has no JSON output) | `folder`, `ext` | |
-| `obsidian_list_folders` | List the folder structure | `tree` | |
+| `obsidian_list_folders` | List the folder structure, whole or below one folder | `folder`, `tree`, `total` | |
 | `obsidian_create` | Create a note | `name`, `path`, `content`, `template`, `overwrite` | ✔ |
 | `obsidian_append` | Append to an existing note | `file` \| `path`, `content` | ✔ |
 | `obsidian_prepend` | Insert at the start of a note | `file` \| `path`, `content` | ✔ |
@@ -213,7 +213,7 @@ your MCP client. It is also exactly the set that disappears under
 | `obsidian_daily_prepend` | Insert at the start of today's daily note | `content` | ✔ |
 | `obsidian_templates` | List the vault's templates | `total` | |
 | `obsidian_template_read` | Read a template's body before applying it with `obsidian_create` | `name`, `resolve`, `title` | |
-| `obsidian_properties_get` | Read a note's frontmatter | `file` \| `path` | |
+| `obsidian_properties_get` | Read a note's frontmatter | `file` \| `path`, `json` | |
 | `obsidian_property_read` | Read one frontmatter key's value, without the rest of the block | `name`, `file` \| `path` | |
 | `obsidian_properties_set` | Set frontmatter keys | `file` \| `path`, `properties`, `type` | ✔ |
 | `obsidian_properties_remove` | Remove one frontmatter key. Answers `Removed: <key>` even when the note had no such key, so the reply does not prove it existed | `file` \| `path`, `key` | ✔ |
@@ -221,7 +221,7 @@ your MCP client. It is also exactly the set that disappears under
 | `obsidian_tag_info` | Show how often one tag is used, and in which notes | `name`, `verbose`, `total` | |
 | `obsidian_backlinks` | List notes linking to a note | `file` \| `path`, `json`, `total` | |
 | `obsidian_links` | List a note's outgoing links | `file` \| `path` | |
-| `obsidian_orphans` | List notes nothing links to (no incoming links); their own outgoing links do not matter | `total` | |
+| `obsidian_orphans` | List notes nothing links to (no incoming links); their own outgoing links do not matter | `all`, `total` | |
 | `obsidian_unresolved_links` | List links that point nowhere | `json`, `total` | |
 | `obsidian_deadends` | List notes that link to nothing | `all`, `total` | |
 | `obsidian_tasks_list` | List tasks (checkboxes), across the vault or in one note | `file` \| `path`, `active`, `daily`, `state` (`todo`/`done`), `status`, `json`, `total` | |
@@ -234,7 +234,7 @@ your MCP client. It is also exactly the set that disappears under
 
 ## Structured output
 
-Eight tools ask the Obsidian CLI for JSON, so they declare an `outputSchema` and
+Nine tools ask the Obsidian CLI for JSON, so they declare an `outputSchema` and
 return the parsed rows as `structuredContent` as well as the text block: a client
 does not have to parse the answer out of a string it was handed.
 
@@ -247,6 +247,7 @@ does not have to parse the answer out of a string it was handed.
 | `obsidian_unresolved_links` | `links` |
 | `obsidian_base_query` | `rows` |
 | `obsidian_outline` | `headings` |
+| `obsidian_properties_get` | `properties` |
 
 The text block is always there too, because the spec asks for it and because a
 client that ignores `structuredContent` would otherwise receive nothing.
@@ -259,10 +260,13 @@ parseable, and a shape the declared schema does not recognise. The text block is
 Only `obsidian_tasks_list` declares the fields of its rows (`status`, `text`,
 `file` and `line`, the last one a string); the rest declare a list and leave the
 item shape to the CLI, so that a guess about it can never suppress a good answer.
+`obsidian_properties_get` is the one that is not a list at all: its key holds the
+frontmatter as one object, property name → value.
 
-`obsidian_tags`, `obsidian_backlinks` and `obsidian_unresolved_links` default to
-`json: true`, like the other tools here; set it to `false` for the CLI's own
-tab-separated rendering.
+`obsidian_tags`, `obsidian_backlinks`, `obsidian_unresolved_links` and
+`obsidian_properties_get` default to `json: true`, like the other tools here; set
+it to `false` for the CLI's own rendering (tab-separated for the first three,
+YAML for the properties).
 
 ## Read-only mode
 
