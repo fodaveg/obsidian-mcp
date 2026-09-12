@@ -202,10 +202,12 @@ your MCP client.
 | `obsidian_properties_set` | Set frontmatter keys | `file` \| `path`, `properties`, `type` | ✔ |
 | `obsidian_properties_remove` | Remove one frontmatter key | `file` \| `path`, `key` | ✔ |
 | `obsidian_tags` | List tags, vault-wide or for one note | `file` \| `path` | |
+| `obsidian_tag_info` | Show how often one tag is used, and in which notes | `name`, `verbose`, `total` | |
 | `obsidian_backlinks` | List notes linking to a note | `file` \| `path` | |
 | `obsidian_links` | List a note's outgoing links | `file` \| `path` | |
 | `obsidian_orphans` | List notes with no links either way | — | |
 | `obsidian_unresolved_links` | List links that point nowhere | — | |
+| `obsidian_deadends` | List notes that link to nothing | `all`, `total` | |
 | `obsidian_tasks_list` | List tasks (checkboxes) across the vault | `json`, `verbose` | |
 | `obsidian_task_create` | Append a `- [ ] …` line to a note, or to today's daily note when no note is given | `content`, `tags`, `file` \| `path` | ✔ |
 | `obsidian_task_complete` | Mark a task as done | `ref` (`path:line`, as `obsidian_tasks_list` returns it with `verbose`), or `path` + `line` | ✔ |

@@ -800,6 +800,25 @@ server.registerTool(
 );
 
 server.registerTool(
+  "obsidian_tag_info",
+  {
+    title: "Show where one tag is used",
+    description:
+      "Reports how often a single tag is used and, with `verbose`, in which notes. Use it instead " +
+      "of obsidian_tags when you already know the tag and want its notes; obsidian_tags is for " +
+      "discovering which tags exist. Searching for the tag with obsidian_search and the " +
+      '"[tag:name]" filter is the way to combine it with other criteria.',
+    annotations: { readOnlyHint: true, openWorldHint: true },
+    inputSchema: {
+      name: z.string().describe('Tag name, with or without the leading #, e.g. "project".'),
+      verbose: z.boolean().default(false).describe("Include the list of notes carrying the tag, with counts."),
+      total: totalParam,
+    },
+  },
+  async ({ name, verbose, total }) => respond(["tag", ...kv({ name, verbose, total })])
+);
+
+server.registerTool(
   "obsidian_backlinks",
   {
     title: "List backlinks to a note",
@@ -847,6 +866,26 @@ server.registerTool(
     inputSchema: { total: totalParam },
   },
   async ({ total }) => respond(["unresolved", ...kv({ total })])
+);
+
+server.registerTool(
+  "obsidian_deadends",
+  {
+    title: "List dead-end notes",
+    description:
+      "Lists notes that link to nothing. Together with obsidian_orphans (nothing links to them) " +
+      "and obsidian_unresolved_links (links pointing nowhere), this is the third view of a vault's " +
+      "link health: dead ends are usually notes that were captured and never connected.",
+    annotations: { readOnlyHint: true, openWorldHint: true },
+    inputSchema: {
+      all: z
+        .boolean()
+        .default(false)
+        .describe("Include non-Markdown files (images, PDFs…), which by definition link to nothing."),
+      total: totalParam,
+    },
+  },
+  async ({ all, total }) => respond(["deadends", ...kv({ all, total })])
 );
 
 // ---------------------------------------------------------------------------
