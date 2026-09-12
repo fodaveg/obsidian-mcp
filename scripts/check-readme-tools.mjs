@@ -196,8 +196,9 @@ if (problems.length > 0) {
   );
   for (const problem of problems) console.error(`  ${problem}\n`);
   console.error(
-    "The table lives under \"## Tools\" in README.md. Parameters go in the third column, each\n" +
-      "one in `backticks`; anything in parentheses is ignored, so enum values and prose belong there."
+    "The table lives under \"## Included tools\" in README.md. Parameters go in the third column,\n" +
+      "each one in `backticks`; anything in parentheses is ignored, so enum values and prose\n" +
+      "belong there."
   );
   process.exit(1);
 }

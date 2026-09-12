@@ -97,14 +97,17 @@ confirm the server talks to the CLI correctly.
 ```bash
 npm test
 npm run lint
+npm run check:readme
 ```
 
 `npm test` builds `src/` and runs the unit tests (Node's built-in test runner, no
 extra dependencies) over the pure helpers — path building and CLI argument
 formatting. They never touch your vault or invoke the `obsidian` binary.
-`npm run lint` runs ESLint over `src/`, `scripts/` and the config itself. Both,
-plus the build, run on every push and pull request (see
-`.github/workflows/ci.yml`).
+`npm run lint` runs ESLint over `src/`, `scripts/` and the config itself.
+`npm run check:readme` compares the [tool table](#included-tools) with the tools the
+server registers, so a new parameter cannot land with a stale row; it starts the
+server over stdio and calls no tool, so it needs no vault either. All three, plus
+the build, run on every push and pull request (see `.github/workflows/ci.yml`).
 
 ## Configure it in Claude Desktop
 
