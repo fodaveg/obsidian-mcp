@@ -119,6 +119,11 @@ everything without a dedicated tool.
 `obsidian_prepend`, `obsidian_move`, `obsidian_delete`, `obsidian_list_files`,
 `obsidian_list_folders`.
 
+Every tool that targets a note takes either `file` (resolved by name, like a
+wikilink) or `path` (the exact vault-relative path). Prefer `path` when the same
+note name exists in several folders. `obsidian_list_files` returns plain text,
+one path per line — the CLI's `files` command has no JSON output.
+
 **Search:** `obsidian_search` (supports filters such as `[tag:project]`,
 `[status:active]`, `[priority:>3]` inside the query).
 
@@ -131,8 +136,10 @@ everything without a dedicated tool.
 **Tags and links:** `obsidian_tags`, `obsidian_backlinks`, `obsidian_links`,
 `obsidian_orphans`, `obsidian_unresolved_links`.
 
-**Tasks:** `obsidian_tasks_list`, `obsidian_task_create`,
-`obsidian_task_complete`.
+**Tasks:** `obsidian_tasks_list`, `obsidian_task_create` (appends a
+`- [ ] …` line to a note, or to today's daily note when no note is given) and
+`obsidian_task_complete` (takes the `ref`, i.e. `path:line`, that
+`obsidian_tasks_list` returns with `verbose`).
 
 ## Security note
 
@@ -163,10 +170,11 @@ ignored.
 src/
   cli.ts     -> helper that invokes the `obsidian` binary and parses its output
   paths.ts   -> builds vault-relative paths (works around the CLI's `create` quirks)
+  tasks.ts   -> builds the Markdown line for a new task
   index.ts   -> MCP server definition and all the tools
 scripts/
   smoke-test.mjs -> quick manual test without needing an MCP client
-  paths.test.mjs -> unit tests for the pure helpers (`npm test`)
+  *.test.mjs     -> unit tests for the pure helpers (`npm test`)
 ```
 
 ## Disclaimer

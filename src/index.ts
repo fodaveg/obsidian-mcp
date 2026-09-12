@@ -4,6 +4,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { formatResult, kv, runCli, withVault, type CliResult } from "./cli.js";
 import { buildCreatePath } from "./paths.js";
+import { buildTaskLine } from "./tasks.js";
 
 const DISABLE_EXEC = ["1", "true", "yes"].includes(
   (process.env.OBSIDIAN_MCP_DISABLE_EXEC || "").toLowerCase()
@@ -31,6 +32,18 @@ function errorResult(text: string) {
   };
 }
 
+// Every CLI command that targets a note accepts `file=` (resolved by name, like a
+// wikilink) or `path=` (exact). Names repeat across folders, so `path` is the
+// unambiguous one; both are declared optional and each tool checks that it got one.
+const fileParam = z.string().optional().describe('Note name / wikilink, e.g. "My Note".');
+const pathParam = z
+  .string()
+  .optional()
+  .describe(
+    'Exact vault-relative path, e.g. "33.11 Notes/My Note.md". Use it when several notes share a name.'
+  );
+const MISSING_TARGET = "Provide either `file` (note name, like a wikilink) or `path` (exact vault-relative path).";
+
 // ---------------------------------------------------------------------------
 // Escape hatch: run any Obsidian CLI command verbatim.
 // ---------------------------------------------------------------------------
@@ -53,8 +66,9 @@ if (!DISABLE_EXEC) {
         '  ["publish:list"]\n' +
         '  ["sync:status"]\n' +
         '  ["history", "file=My Note"]\n' +
-        "Each element is one whitespace-free CLI token, exactly as you'd type it after `obsidian` " +
-        '(key=value for parameters, e.g. "file=My Note", and --flag for booleans). ' +
+        "Each element is one CLI token, exactly as you'd type it after `obsidian`: `key=value` for " +
+        'parameters (e.g. "file=My Note", quotes not needed here) and the bare word for boolean ' +
+        'options (e.g. "total", "verbose", "overwrite" -- never "--overwrite", which the CLI ignores). ' +
         "CAUTION: this also gives access to developer commands like eval=<js> and dev:* which can run " +
         "arbitrary JavaScript inside the user's Obsidian app or inspect its UI -- only use those when the " +
         "user explicitly asks for them. Set OBSIDIAN_MCP_DISABLE_EXEC=1 in the server's environment to " +
@@ -94,15 +108,15 @@ server.registerTool(
   "obsidian_list_files",
   {
     title: "List files in the vault",
-    description: "Lists notes/files in the vault, optionally filtered by folder or extension.",
+    description:
+      "Lists notes/files in the vault, optionally filtered by folder or extension. The output is " +
+      "plain text, one vault-relative path per line (this command has no JSON format).",
     inputSchema: {
-      folder: z.string().optional(),
+      folder: z.string().optional().describe('Limit to a folder, e.g. "33.11 Notes".'),
       ext: z.string().optional().describe('File extension filter, e.g. "md"'),
-      json: z.boolean().default(true).describe("Return machine-readable JSON output."),
     },
   },
-  async ({ folder, ext, json }) =>
-    respond(["files", ...kv({ folder, ext, format: json ? "json" : undefined })])
+  async ({ folder, ext }) => respond(["files", ...kv({ folder, ext })])
 );
 
 server.registerTool(
@@ -163,26 +177,34 @@ server.registerTool(
   "obsidian_append",
   {
     title: "Append to a note",
-    description: "Appends content to the end of an existing note.",
+    description: "Appends content to the end of an existing note, addressed by name or by path.",
     inputSchema: {
-      file: z.string().describe("Note name / wikilink."),
+      file: fileParam,
+      path: pathParam,
       content: z.string(),
     },
   },
-  async ({ file, content }) => respond(["append", ...kv({ file, content })])
+  async ({ file, path, content }) => {
+    if (!file && !path) return errorResult(MISSING_TARGET);
+    return respond(["append", ...kv({ file, path, content })]);
+  }
 );
 
 server.registerTool(
   "obsidian_prepend",
   {
     title: "Prepend to a note",
-    description: "Inserts content at the start of an existing note.",
+    description: "Inserts content at the start of an existing note, addressed by name or by path.",
     inputSchema: {
-      file: z.string().describe("Note name / wikilink."),
+      file: fileParam,
+      path: pathParam,
       content: z.string(),
     },
   },
-  async ({ file, content }) => respond(["prepend", ...kv({ file, content })])
+  async ({ file, path, content }) => {
+    if (!file && !path) return errorResult(MISSING_TARGET);
+    return respond(["prepend", ...kv({ file, path, content })]);
+  }
 );
 
 server.registerTool(
@@ -192,11 +214,15 @@ server.registerTool(
     description:
       "Moves a note to a different folder (or renames it). Wikilinks pointing to it are updated automatically.",
     inputSchema: {
-      file: z.string().describe("Note name / wikilink to move."),
+      file: fileParam,
+      path: pathParam,
       to: z.string().describe('Destination folder or path, e.g. "Archive/2026/".'),
     },
   },
-  async ({ file, to }) => respond(["move", ...kv({ file, to })])
+  async ({ file, path, to }) => {
+    if (!file && !path) return errorResult(MISSING_TARGET);
+    return respond(["move", ...kv({ file, path, to })]);
+  }
 );
 
 server.registerTool(
@@ -205,11 +231,15 @@ server.registerTool(
     title: "Delete a note",
     description: "Deletes a note. By default it goes to Obsidian's trash unless `permanent` is set.",
     inputSchema: {
-      file: z.string().describe("Note name / wikilink to delete."),
-      permanent: z.boolean().default(false),
+      file: fileParam,
+      path: pathParam,
+      permanent: z.boolean().default(false).describe("Skip the trash and delete permanently."),
     },
   },
-  async ({ file, permanent }) => respond(["delete", ...kv({ file, permanent })])
+  async ({ file, path, permanent }) => {
+    if (!file && !path) return errorResult(MISSING_TARGET);
+    return respond(["delete", ...kv({ file, path, permanent })]);
+  }
 );
 
 // ---------------------------------------------------------------------------
@@ -278,9 +308,12 @@ server.registerTool(
   {
     title: "Get a note's properties",
     description: "Reads the YAML frontmatter/properties of a note.",
-    inputSchema: { file: z.string() },
+    inputSchema: { file: fileParam, path: pathParam },
   },
-  async ({ file }) => respond(["properties", ...kv({ file })])
+  async ({ file, path }) => {
+    if (!file && !path) return errorResult(MISSING_TARGET);
+    return respond(["properties", ...kv({ file, path })]);
+  }
 );
 
 server.registerTool(
@@ -288,16 +321,39 @@ server.registerTool(
   {
     title: "Set note properties",
     description:
-      "Sets one or more frontmatter properties on a note, e.g. { status: 'active', tags: 'pkm,obsidian' }.",
+      "Sets one or more frontmatter properties on a note, e.g. { status: 'active', tags: 'pkm,obsidian' }. " +
+      "The CLI sets one property per call, so this runs one call per key and reports them all together.",
     inputSchema: {
-      file: z.string(),
+      file: fileParam,
+      path: pathParam,
       properties: z
         .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
         .describe('Property name -> value, e.g. { "status": "active" }'),
+      type: z
+        .enum(["text", "list", "number", "checkbox", "date", "datetime"])
+        .optional()
+        .describe("Property type, applied to every property in this call. Defaults to Obsidian's own guess."),
     },
   },
-  async ({ file, properties }) =>
-    respond(["properties:set", ...kv({ file }), ...kv(properties)])
+  async ({ file, path, properties, type }) => {
+    if (!file && !path) return errorResult(MISSING_TARGET);
+
+    const entries = Object.entries(properties);
+    if (entries.length === 0) return errorResult("Provide at least one property to set.");
+
+    const lines: string[] = [];
+    let failed = false;
+    for (const [name, value] of entries) {
+      // name= and value= are built by hand so that an empty value still reaches the CLI.
+      const result: CliResult = await runCli(
+        withVault(["property:set", `name=${name}`, `value=${value}`, ...kv({ type, file, path })])
+      );
+      if (!result.ok) failed = true;
+      lines.push(`${name}: ${formatResult(result)}`);
+    }
+
+    return { isError: failed, content: [{ type: "text" as const, text: lines.join("\n") }] };
+  }
 );
 
 server.registerTool(
@@ -305,9 +361,16 @@ server.registerTool(
   {
     title: "Remove a note property",
     description: "Removes a single frontmatter key from a note.",
-    inputSchema: { file: z.string(), key: z.string() },
+    inputSchema: {
+      file: fileParam,
+      path: pathParam,
+      key: z.string().describe('Property name to remove, e.g. "status".'),
+    },
   },
-  async ({ file, key }) => respond(["properties:remove", ...kv({ file, key })])
+  async ({ file, path, key }) => {
+    if (!file && !path) return errorResult(MISSING_TARGET);
+    return respond(["property:remove", ...kv({ name: key, file, path })]);
+  }
 );
 
 // ---------------------------------------------------------------------------
@@ -318,12 +381,18 @@ server.registerTool(
   "obsidian_tags",
   {
     title: "List tags",
-    description: "Lists all tags used in the vault, optionally sorted by usage count.",
+    description:
+      "Lists the tags used in the vault, or only those of one note when `file` or `path` is given, " +
+      "optionally sorted by usage count.",
     inputSchema: {
+      file: fileParam,
+      path: pathParam,
       byCount: z.boolean().default(false).describe("Sort tags by how often they're used."),
     },
   },
-  async ({ byCount }) => respond(["tags", ...kv({ sort: byCount ? "count" : undefined })])
+  // Both targets are optional here: with neither, the CLI lists the whole vault.
+  async ({ file, path, byCount }) =>
+    respond(["tags", ...kv({ file, path, sort: byCount ? "count" : undefined })])
 );
 
 server.registerTool(
@@ -331,9 +400,12 @@ server.registerTool(
   {
     title: "List backlinks to a note",
     description: "Lists every note that links to the given note.",
-    inputSchema: { file: z.string() },
+    inputSchema: { file: fileParam, path: pathParam },
   },
-  async ({ file }) => respond(["backlinks", ...kv({ file })])
+  async ({ file, path }) => {
+    if (!file && !path) return errorResult(MISSING_TARGET);
+    return respond(["backlinks", ...kv({ file, path })]);
+  }
 );
 
 server.registerTool(
@@ -341,9 +413,12 @@ server.registerTool(
   {
     title: "List a note's outgoing links",
     description: "Lists every link found inside the given note.",
-    inputSchema: { file: z.string() },
+    inputSchema: { file: fileParam, path: pathParam },
   },
-  async ({ file }) => respond(["links", ...kv({ file })])
+  async ({ file, path }) => {
+    if (!file && !path) return errorResult(MISSING_TARGET);
+    return respond(["links", ...kv({ file, path })]);
+  }
 );
 
 server.registerTool(
@@ -377,32 +452,65 @@ server.registerTool(
     description: "Lists tasks (checkboxes) found across the vault.",
     inputSchema: {
       json: z.boolean().default(true),
+      verbose: z
+        .boolean()
+        .default(false)
+        .describe(
+          "Group results by file and include line numbers, which is how you get the `ref` " +
+            "(path:line) that obsidian_task_complete needs."
+        ),
     },
   },
-  async ({ json }) => respond(["tasks", ...kv({ format: json ? "json" : undefined })])
+  async ({ json, verbose }) =>
+    respond(["tasks", ...kv({ format: json ? "json" : undefined, verbose })])
 );
 
 server.registerTool(
   "obsidian_task_create",
   {
-    title: "Create a task",
-    description: "Creates a new task, optionally tagged.",
+    title: "Add a task to a note",
+    description:
+      "Appends a `- [ ] <content>` checkbox line to a note (or to today's daily note when neither " +
+      "`file` nor `path` is given). Tags are appended to the line as #tags.",
     inputSchema: {
-      content: z.string(),
+      content: z.string().describe("Task text, without the checkbox markup."),
       tags: z.string().optional().describe('Comma-separated tags, e.g. "work,urgent".'),
+      file: fileParam,
+      path: pathParam,
     },
   },
-  async ({ content, tags }) => respond(["task:create", ...kv({ content, tags })])
+  async ({ content, tags, file, path }) => {
+    // There is no task-creating command in the CLI: a task is just a line of Markdown.
+    const line = buildTaskLine(content, tags);
+    const args = file || path ? ["append", ...kv({ file, path })] : ["daily:append"];
+    return respond([...args, `content=${line}`]);
+  }
 );
 
 server.registerTool(
   "obsidian_task_complete",
   {
     title: "Complete a task",
-    description: "Marks a task as done by its task id (as returned by obsidian_tasks_list).",
-    inputSchema: { task: z.string() },
+    description:
+      "Marks a task as done. Identify it with `ref` (\"path:line\", exactly as obsidian_tasks_list " +
+      "returns it with `verbose`) or with `path` plus `line`. To toggle it or set another status " +
+      "character, use obsidian_exec with the `task` command.",
+    inputSchema: {
+      ref: z
+        .string()
+        .optional()
+        .describe('Task reference, "vault/relative/path.md:12".'),
+      path: z.string().optional().describe("Exact vault-relative path of the note holding the task."),
+      line: z.number().int().positive().optional().describe("1-based line number of the task."),
+    },
   },
-  async ({ task }) => respond(["task:complete", ...kv({ task })])
+  async ({ ref, path, line }) => {
+    if (!ref && !(path && line !== undefined)) {
+      return errorResult('Provide `ref` ("path:line"), or both `path` and `line`.');
+    }
+    const target = ref ? kv({ ref }) : kv({ path, line });
+    return respond(["task", ...target, "done"]);
+  }
 );
 
 // ---------------------------------------------------------------------------
