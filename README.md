@@ -200,7 +200,7 @@ your MCP client.
 | `obsidian_properties_get` | Read a note's frontmatter | `file` \| `path` | |
 | `obsidian_property_read` | Read one frontmatter key's value, without the rest of the block | `name`, `file` \| `path` | |
 | `obsidian_properties_set` | Set frontmatter keys | `file` \| `path`, `properties`, `type` | ✔ |
-| `obsidian_properties_remove` | Remove one frontmatter key | `file` \| `path`, `key` | ✔ |
+| `obsidian_properties_remove` | Remove one frontmatter key. Answers `Removed: <key>` even when the note had no such key, so the reply does not prove it existed | `file` \| `path`, `key` | ✔ |
 | `obsidian_tags` | List tags, vault-wide or for one note | `file` \| `path` | |
 | `obsidian_tag_info` | Show how often one tag is used, and in which notes | `name`, `verbose`, `total` | |
 | `obsidian_backlinks` | List notes linking to a note | `file` \| `path` | |

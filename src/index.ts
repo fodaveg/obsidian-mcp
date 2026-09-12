@@ -770,7 +770,11 @@ server.registerTool(
   "obsidian_properties_remove",
   {
     title: "Remove a note property",
-    description: "Removes a single frontmatter key from a note.",
+    description:
+      "Removes a single frontmatter key from a note. The CLI answers `Removed: <key>` whether or " +
+      "not the note had that property, so the reply is not evidence that it existed: check with " +
+      "obsidian_property_read first when that matters (e.g. before telling the user you cleared " +
+      "something).",
     annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: true },
     inputSchema: {
       file: fileParam,
