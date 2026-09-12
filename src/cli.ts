@@ -223,11 +223,13 @@ export function withVault(args: string[]): string[] {
 export function formatResult(result: CliResult): string {
   const lines: string[] = [];
   if (result.ok) {
-    lines.push(result.stdout || "(sin salida)");
+    lines.push(result.stdout || "(no output)");
   } else {
-    lines.push(`El comando de Obsidian CLI terminó con código ${result.code}.`);
+    // stderr first: on a failure it carries the actionable message, and the exit code on its
+    // own says nothing. The code goes last, as a footnote.
     if (result.stderr) lines.push(`stderr: ${result.stderr}`);
     if (result.stdout) lines.push(`stdout: ${result.stdout}`);
+    lines.push(`Obsidian CLI exited with code ${result.code}.`);
   }
   if (result.truncatedBytes > 0) {
     lines.push(truncationNotice(result.truncatedBytes, MAX_OUTPUT_BYTES));
