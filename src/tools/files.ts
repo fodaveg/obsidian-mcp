@@ -17,11 +17,8 @@ export const fileTools = [
     title: "Read a note",
     description: "Reads the contents of a note, by wikilink name or by vault-relative path.",
     annotations: { readOnlyHint: true, openWorldHint: true },
-    inputSchema: {
-      file: z.string().optional().describe('Note name / wikilink, e.g. "My Note"'),
-      path: z.string().optional().describe('Vault-relative path, e.g. "Projects/Note.md"'),
-    },
-    requireTarget: "Provide either `file` or `path`.",
+    inputSchema: { file: fileParam, path: pathParam },
+    requireTarget: true,
     command: "read",
     tier: "quick",
     tokens: ({ file, path }) => kv({ file, path }),
