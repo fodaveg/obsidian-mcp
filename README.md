@@ -17,7 +17,10 @@ your eyes open; none of it is hidden behind a flag you can forget about.
 - **It can change and destroy notes.** `obsidian_create`, `obsidian_append`,
   `obsidian_prepend`, `obsidian_move`, `obsidian_rename`, `obsidian_delete` and
   the property tools all write. `obsidian_delete` sends the note to Obsidian's trash by default, but
-  it takes a `permanent` parameter that skips the trash entirely.
+  it takes a `permanent` parameter that skips the trash entirely. If you only want
+  the model to consult the vault, start with
+  [`OBSIDIAN_MCP_READONLY=1`](#read-only-mode), which leaves every one of those
+  tools unregistered.
 - **Have a backup, or sync with version history, before you enable writing.**
   Obsidian Sync, a git-tracked vault or Time Machine all qualify. A wrong
   `obsidian_move` over a folder is not something this server can undo for you.
@@ -156,6 +159,7 @@ registering so the `obsidian_*` tools appear.
 | `OBSIDIAN_CLI_KILL_GRACE_MS` | How long a timed-out CLI process gets between `SIGTERM` and `SIGKILL` | `2000` |
 | `OBSIDIAN_MCP_CONCURRENCY` | How many CLI processes may run at once. They all talk to the same Obsidian instance, and running them in parallel is what makes it stall, so calls are queued one at a time by default | `1` |
 | `OBSIDIAN_MCP_MAX_OUTPUT_BYTES` | Cap on how much a single call may return. Past it the output is cut and the reply says how much was dropped and how to narrow the query | `50000` |
+| `OBSIDIAN_MCP_READONLY` | If `1`, the tools that write to the vault are not registered at all: the model only gets the ones that read. See [Read-only mode](#read-only-mode) | (empty — the write tools are registered) |
 | `OBSIDIAN_MCP_ENABLE_EXEC` | If `1`, registers the `obsidian_exec` escape hatch. Read [Security model](#security-model) first | (empty — tool not registered) |
 | `OBSIDIAN_MCP_DISABLE_EXEC` | If `1`, keeps `obsidian_exec` off even if the variable above is set. Belt and braces for a shared config | (empty) |
 
@@ -179,7 +183,8 @@ wikilink) or `path` (the exact vault-relative path). Prefer `path` when the same
 note name exists in several folders.
 
 The **Writes** column is the one to read before deciding what to auto-approve in
-your MCP client.
+your MCP client. It is also exactly the set that disappears under
+[`OBSIDIAN_MCP_READONLY=1`](#read-only-mode).
 
 | Tool | What it does | Main parameters | Writes |
 | --- | --- | --- | :---: |
@@ -226,6 +231,24 @@ your MCP client.
 | `obsidian_history` | List a note's stored versions (file recovery / Sync history) | `file` \| `path` | |
 | `obsidian_history_read` | Read one stored version of a note. Reading only — restoring is deliberately **not** exposed | `file` \| `path`, `version` | |
 | `obsidian_exec` | **Escape hatch.** Run any CLI subcommand verbatim. Not registered unless `OBSIDIAN_MCP_ENABLE_EXEC=1` | `args` (array of CLI tokens) | ✔ |
+
+## Read-only mode
+
+```bash
+OBSIDIAN_MCP_READONLY=1
+```
+
+With that set, the server does not register a single tool that writes: the
+thirteen rows with a tick in the **Writes** column above are absent from the tool
+list, so the model cannot call them and never learns they exist. Everything that
+reads — searching, outlines, properties, tags, backlinks, bases, history, sync
+status — keeps working, and `obsidian_exec` stays out too, even with
+`OBSIDIAN_MCP_ENABLE_EXEC=1` (it can write, so read-only wins).
+
+It accepts `1`, `true` or `yes` in any casing. This is the configuration to use
+for "let the model consult my vault"; it is also the one to use while you decide
+whether you want the rest. It does not change what leaves your machine: a tool
+that reads still sends what it read to your model provider.
 
 ## Security model
 

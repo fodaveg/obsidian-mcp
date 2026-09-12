@@ -18,10 +18,32 @@ function envFlag(name: string): boolean {
 const ENABLE_EXEC =
   envFlag("OBSIDIAN_MCP_ENABLE_EXEC") && !envFlag("OBSIDIAN_MCP_DISABLE_EXEC");
 
+// Read-only mode: the tools that change the vault are not registered at all, so they are not in
+// the list the model sees and there is nothing for the client to call. It is the only way to use
+// this server purely for consulting a vault.
+const READONLY = envFlag("OBSIDIAN_MCP_READONLY");
+
 const server = new McpServer({
   name: "obsidian-mcp",
   version: "0.1.0",
 });
+
+/**
+ * Registers a tool THAT WRITES to the vault -- unless OBSIDIAN_MCP_READONLY is set, in which
+ * case it registers nothing.
+ *
+ * EVERY NEW TOOL THAT WRITES MUST BE REGISTERED THROUGH THIS FUNCTION, never through
+ * server.registerTool: this is the whole list of writers, there is no second place that repeats
+ * it. In the README they are the rows with a tick in the "Writes" column; in the code they are
+ * the ones carrying `destructiveHint` or lacking `readOnlyHint`.
+ *
+ * The type is registerTool's own so that each handler's arguments are still inferred from its
+ * inputSchema. The read-only branch is a no-op whose RegisteredTool return value would be a lie,
+ * which is safe here because no call site uses it.
+ */
+const registerWriteTool: typeof server.registerTool = READONLY
+  ? ((() => undefined) as unknown as typeof server.registerTool)
+  : server.registerTool.bind(server);
 
 /**
  * Runs the CLI and turns the result into a CallToolResult.
@@ -92,7 +114,7 @@ const totalParam = z
 // ---------------------------------------------------------------------------
 
 if (ENABLE_EXEC) {
-  server.registerTool(
+  registerWriteTool(
     "obsidian_exec",
     {
       title: "Run a raw Obsidian CLI command",
@@ -208,7 +230,7 @@ server.registerTool(
   async ({ tree }) => respond(["folders", ...kv({ format: tree ? "tree" : undefined })], "slow")
 );
 
-server.registerTool(
+registerWriteTool(
   "obsidian_create",
   {
     title: "Create a note",
@@ -252,7 +274,7 @@ server.registerTool(
   }
 );
 
-server.registerTool(
+registerWriteTool(
   "obsidian_append",
   {
     title: "Append to a note",
@@ -270,7 +292,7 @@ server.registerTool(
   }
 );
 
-server.registerTool(
+registerWriteTool(
   "obsidian_prepend",
   {
     title: "Prepend to a note",
@@ -288,7 +310,7 @@ server.registerTool(
   }
 );
 
-server.registerTool(
+registerWriteTool(
   "obsidian_move",
   {
     title: "Move or rename a note",
@@ -310,7 +332,7 @@ server.registerTool(
   }
 );
 
-server.registerTool(
+registerWriteTool(
   "obsidian_rename",
   {
     title: "Rename a note",
@@ -339,7 +361,7 @@ server.registerTool(
   }
 );
 
-server.registerTool(
+registerWriteTool(
   "obsidian_delete",
   {
     title: "Delete a note",
@@ -622,7 +644,7 @@ server.registerTool(
   async ({ date }) => respond(["daily:read", ...kv({ date })], "quick")
 );
 
-server.registerTool(
+registerWriteTool(
   "obsidian_daily_append",
   {
     title: "Append to today's daily note",
@@ -633,7 +655,7 @@ server.registerTool(
   async ({ content }) => respond(["daily:append", ...kv({ content })])
 );
 
-server.registerTool(
+registerWriteTool(
   "obsidian_daily_prepend",
   {
     title: "Prepend to today's daily note",
@@ -731,7 +753,7 @@ server.registerTool(
   }
 );
 
-server.registerTool(
+registerWriteTool(
   "obsidian_properties_set",
   {
     title: "Set note properties",
@@ -778,7 +800,7 @@ server.registerTool(
   }
 );
 
-server.registerTool(
+registerWriteTool(
   "obsidian_properties_remove",
   {
     title: "Remove a note property",
@@ -985,7 +1007,7 @@ server.registerTool(
   }
 );
 
-server.registerTool(
+registerWriteTool(
   "obsidian_task_create",
   {
     title: "Add a task to a note",
@@ -1008,7 +1030,7 @@ server.registerTool(
   }
 );
 
-server.registerTool(
+registerWriteTool(
   "obsidian_task_complete",
   {
     title: "Complete a task",
