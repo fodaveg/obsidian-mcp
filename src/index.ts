@@ -52,6 +52,20 @@ const pathParam = z
   );
 const MISSING_TARGET = "Provide either `file` (note name, like a wikilink) or `path` (exact vault-relative path).";
 
+// Every tool declares `annotations`, because the spec tells clients to assume the worst when
+// they are missing -- without them, reading a note asks the user for the same confirmation as
+// deleting one. The criteria used here:
+//   readOnlyHint    -- the tool never writes to the vault.
+//   destructiveHint -- only meaningful when readOnlyHint is false. `true` means it can lose
+//                      existing content (delete, move, create with overwrite, property:remove);
+//                      `false` is reserved for the purely additive writers (append/prepend).
+//                      Where a call overwrites a value in place it is left undeclared, so the
+//                      client keeps its cautious default.
+//   idempotentHint  -- only meaningful when readOnlyHint is false, and only declared when
+//                      repeating the exact same call leaves the vault in the same state.
+//   openWorldHint   -- true everywhere: every result depends on a vault this server does not
+//                      own and the user can change under it at any moment.
+
 // ---------------------------------------------------------------------------
 // Escape hatch: run any Obsidian CLI command verbatim.
 // ---------------------------------------------------------------------------
@@ -81,6 +95,7 @@ if (ENABLE_EXEC) {
         "arbitrary JavaScript inside the user's Obsidian app or inspect its UI -- only use those when the " +
         "user explicitly asks for them. Set OBSIDIAN_MCP_DISABLE_EXEC=1 in the server's environment to " +
         "remove this tool entirely and keep only the curated tools below.",
+      annotations: { destructiveHint: true, openWorldHint: true },
       inputSchema: {
         args: z
           .array(z.string())
@@ -101,6 +116,7 @@ server.registerTool(
   {
     title: "Read a note",
     description: "Reads the contents of a note, by wikilink name or by vault-relative path.",
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: {
       file: z.string().optional().describe('Note name / wikilink, e.g. "My Note"'),
       path: z.string().optional().describe('Vault-relative path, e.g. "Projects/Note.md"'),
@@ -119,6 +135,7 @@ server.registerTool(
     description:
       "Lists notes/files in the vault, optionally filtered by folder or extension. The output is " +
       "plain text, one vault-relative path per line (this command has no JSON format).",
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: {
       folder: z.string().optional().describe('Limit to a folder, e.g. "33.11 Notes".'),
       ext: z.string().optional().describe('File extension filter, e.g. "md"'),
@@ -132,6 +149,7 @@ server.registerTool(
   {
     title: "List folders in the vault",
     description: "Lists the vault's folder structure.",
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: {
       tree: z.boolean().default(false).describe("Render as a hierarchical tree instead of a flat list."),
     },
@@ -148,6 +166,8 @@ server.registerTool(
       "written at `path`/`name`.md: the name may contain dots, accents, dashes or parentheses, and " +
       "folders whose name carries an ID (e.g. \"33.11 Notes/\") work as typed. Missing folders are " +
       "created. Paths are relative to the vault root.",
+    // `overwrite` can replace an existing note, so this counts as destructive.
+    annotations: { destructiveHint: true, idempotentHint: false, openWorldHint: true },
     inputSchema: {
       name: z
         .string()
@@ -186,6 +206,7 @@ server.registerTool(
   {
     title: "Append to a note",
     description: "Appends content to the end of an existing note, addressed by name or by path.",
+    annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: true },
     inputSchema: {
       file: fileParam,
       path: pathParam,
@@ -203,6 +224,7 @@ server.registerTool(
   {
     title: "Prepend to a note",
     description: "Inserts content at the start of an existing note, addressed by name or by path.",
+    annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: true },
     inputSchema: {
       file: fileParam,
       path: pathParam,
@@ -221,6 +243,9 @@ server.registerTool(
     title: "Move or rename a note",
     description:
       "Moves a note to a different folder (or renames it). Wikilinks pointing to it are updated automatically.",
+    // Rewrites wikilinks across the whole vault and no single command undoes that; a second
+    // identical call no longer finds the source, so it is not idempotent either.
+    annotations: { destructiveHint: true, openWorldHint: true },
     inputSchema: {
       file: fileParam,
       path: pathParam,
@@ -238,6 +263,7 @@ server.registerTool(
   {
     title: "Delete a note",
     description: "Deletes a note. By default it goes to Obsidian's trash unless `permanent` is set.",
+    annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: true },
     inputSchema: {
       file: fileParam,
       path: pathParam,
@@ -261,6 +287,7 @@ server.registerTool(
     description:
       "Full-text search across the vault. Supports structured filters inside the query string, e.g. " +
       '"[tag:project]", "[status:active]", "[priority:>3]".',
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: {
       query: z.string(),
       limit: z.number().int().positive().optional(),
@@ -280,6 +307,7 @@ server.registerTool(
   {
     title: "Read today's daily note",
     description: "Reads the content of today's daily note (or a specific date's).",
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: {
       date: z.string().optional().describe("ISO date, e.g. 2026-07-20. Defaults to today."),
     },
@@ -292,6 +320,7 @@ server.registerTool(
   {
     title: "Append to today's daily note",
     description: "Appends content to the end of today's daily note.",
+    annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: true },
     inputSchema: { content: z.string() },
   },
   async ({ content }) => respond(["daily:append", ...kv({ content })])
@@ -302,6 +331,7 @@ server.registerTool(
   {
     title: "Prepend to today's daily note",
     description: "Inserts content at the start of today's daily note.",
+    annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: true },
     inputSchema: { content: z.string() },
   },
   async ({ content }) => respond(["daily:prepend", ...kv({ content })])
@@ -316,6 +346,7 @@ server.registerTool(
   {
     title: "Get a note's properties",
     description: "Reads the YAML frontmatter/properties of a note.",
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: { file: fileParam, path: pathParam },
   },
   async ({ file, path }) => {
@@ -331,6 +362,9 @@ server.registerTool(
     description:
       "Sets one or more frontmatter properties on a note, e.g. { status: 'active', tags: 'pkm,obsidian' }. " +
       "The CLI sets one property per call, so this runs one call per key and reports them all together.",
+    // A key that already existed keeps no copy of its old value, so destructiveHint is left
+    // undeclared on purpose and the client keeps its cautious default.
+    annotations: { idempotentHint: true, openWorldHint: true },
     inputSchema: {
       file: fileParam,
       path: pathParam,
@@ -369,6 +403,7 @@ server.registerTool(
   {
     title: "Remove a note property",
     description: "Removes a single frontmatter key from a note.",
+    annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: true },
     inputSchema: {
       file: fileParam,
       path: pathParam,
@@ -392,6 +427,7 @@ server.registerTool(
     description:
       "Lists the tags used in the vault, or only those of one note when `file` or `path` is given, " +
       "optionally sorted by usage count.",
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: {
       file: fileParam,
       path: pathParam,
@@ -408,6 +444,7 @@ server.registerTool(
   {
     title: "List backlinks to a note",
     description: "Lists every note that links to the given note.",
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: { file: fileParam, path: pathParam },
   },
   async ({ file, path }) => {
@@ -421,6 +458,7 @@ server.registerTool(
   {
     title: "List a note's outgoing links",
     description: "Lists every link found inside the given note.",
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: { file: fileParam, path: pathParam },
   },
   async ({ file, path }) => {
@@ -434,6 +472,7 @@ server.registerTool(
   {
     title: "List orphan notes",
     description: "Lists notes that have no incoming or outgoing links.",
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: {},
   },
   async () => respond(["orphans"])
@@ -444,6 +483,7 @@ server.registerTool(
   {
     title: "List unresolved links",
     description: "Lists links in the vault that don't resolve to an existing note.",
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: {},
   },
   async () => respond(["unresolved"])
@@ -458,6 +498,7 @@ server.registerTool(
   {
     title: "List tasks",
     description: "Lists tasks (checkboxes) found across the vault.",
+    annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: {
       json: z.boolean().default(true),
       verbose: z
@@ -480,6 +521,7 @@ server.registerTool(
     description:
       "Appends a `- [ ] <content>` checkbox line to a note (or to today's daily note when neither " +
       "`file` nor `path` is given). Tags are appended to the line as #tags.",
+    annotations: { destructiveHint: false, idempotentHint: false, openWorldHint: true },
     inputSchema: {
       content: z.string().describe("Task text, without the checkbox markup."),
       tags: z.string().optional().describe('Comma-separated tags, e.g. "work,urgent".'),
@@ -503,6 +545,9 @@ server.registerTool(
       "Marks a task as done. Identify it with `ref` (\"path:line\", exactly as obsidian_tasks_list " +
       "returns it with `verbose`) or with `path` plus `line`. To toggle it or set another status " +
       "character, use obsidian_exec with the `task` command.",
+    // It overwrites the status character of an existing line, so destructiveHint is left
+    // undeclared; marking the same task done twice does leave the same state.
+    annotations: { idempotentHint: true, openWorldHint: true },
     inputSchema: {
       ref: z
         .string()
