@@ -28,9 +28,42 @@ const MARKDOWN_EXTENSION = ".md";
  */
 const FORBIDDEN_NAME_CHARACTERS = [":", "*", "?", '"', "<", ">", "|", "\\"];
 
+/** What to do with a folder that turned up inside a name. Create takes it in `path`. */
+const SLASH_BELONGS_IN_PATH =
+  "Pass the folder in `path` and only the note's own name in `name`.";
+
+/**
+ * A last segment that names a FILE rather than a folder: a dot, then a letter, then up to seven
+ * more letters or digits, at the very end. That is `.md`, `.canvas`, `.png`, `.pdf`; it is not
+ * `33.11 Notas` (a space is not part of an extension) and not `Draft v1.2.3` (an extension does
+ * not start with a digit), both of which are perfectly ordinary FOLDER names.
+ *
+ * Deliberately conservative, because the two mistakes do not cost the same. Reading a file as a
+ * folder only skips a filename check on a destination the CLI will refuse anyway. Reading a
+ * folder as a file would run the filename rules over a folder the user did not create here --
+ * exactly the regression this module refuses to introduce.
+ */
+const FILE_EXTENSION = /\.[A-Za-z][A-Za-z0-9]{0,7}$/;
+
 /** True when the value already carries the Markdown extension (case-insensitive). */
 export function hasMarkdownExtension(value: string): boolean {
   return value.toLowerCase().endsWith(MARKDOWN_EXTENSION);
+}
+
+/**
+ * The filename a destination path would create, or `undefined` when it names a folder.
+ *
+ * `obsidian_move`'s `to` is either ("Archive/2026/") or ("Archive/2026/Nota A.md"): a folder to
+ * drop the note into, keeping its name, or a full path that renames it on the way. Only the
+ * second one creates a filename, and only that one gets checked.
+ *
+ * @param destination A destination folder or path, as the user typed it.
+ * @returns The last segment when it looks like a file, otherwise undefined.
+ */
+export function destinationFilename(destination: string): string | undefined {
+  const trimmed = destination.trim().replace(/\/+$/, "");
+  const last = trimmed.slice(trimmed.lastIndexOf("/") + 1);
+  return FILE_EXTENSION.test(last) ? last : undefined;
 }
 
 /** `\t` as U+0009, so an unprintable character can be named in an error message. */
@@ -46,14 +79,22 @@ function describeCharacter(character: string): string {
  * folders already in the vault may well carry one of these, and refusing to address them would
  * break access to notes that work today.
  *
- * @param filename The last segment of the destination, with or without its `.md` suffix.
+ * Every tool that composes a filename goes through here -- creating, renaming and moving a note
+ * to a new path -- because the sync loop does not care which of the three put the character there.
+ *
+ * @param filename  The last segment of the destination, with or without its `.md` suffix.
+ * @param slashHint Where the folder belongs instead, when the name carries a `/`. The answer
+ *                  depends on the tool, so each one says its own.
  * @throws If the name holds `/`, one of FORBIDDEN_NAME_CHARACTERS, or a control character.
  */
-function assertUsableFilename(filename: string): void {
+export function assertUsableFilename(
+  filename: string,
+  slashHint: string = SLASH_BELONGS_IN_PATH
+): void {
   if (filename.includes("/")) {
     throw new Error(
       `"${filename}" is a note name, not a path: "/" separates folders and cannot be part of a ` +
-        "filename. Pass the folder in `path` and only the note's own name in `name`."
+        `filename. ${slashHint}`
     );
   }
 

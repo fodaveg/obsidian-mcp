@@ -330,15 +330,23 @@ rummaging through, keep the writing tools on manual approval, and keep a backup.
 Obsidian Sync applies cross-platform (Windows/iOS) naming rules. Never put
 `: * ? " < > | / \` in a note's **filename** — a single one can send Obsidian
 Sync into a loop. These characters are fine in the note **title** (frontmatter /
-`# H1`), just not in the `.md` filename. When creating or renaming notes through
-this server, sanitize filenames accordingly.
+`# H1`), just not in the `.md` filename.
 
-`obsidian_create` enforces this on the way in: a `name` carrying one of those
-characters, a control character, or a `/` (the folder belongs in `path`, not in
-the name) is rejected with an error saying which character is the problem,
-before anything is written. The check covers the **filename** only — when `path`
-is a full `.md` path, its last segment — so folders that already exist in your
-vault stay addressable whatever they are called.
+The three tools that compose a filename enforce this on the way in, and answer
+with an error naming the character before anything is written:
+
+- `obsidian_create` checks `name` — or, when `path` is a full `.md` path, its
+  last segment.
+- `obsidian_rename` checks `name`, which is the new filename whole.
+- `obsidian_move` checks the last segment of `to`, but only when `to` ends in a
+  file (a dot, a letter, then letters or digits: `.md`, `.canvas`, `.png`). A
+  `to` that names a folder creates no filename, so there is nothing to check.
+
+A `/` is rejected too, with its own message: the folder is not part of the name.
+
+The check covers the **filename being created** and never the folders a path
+goes through, so a folder that already exists in your vault stays addressable
+whatever it is called — `Proyecto: 2026/Nota A.md` keeps working.
 
 Dots, on the other hand, are safe: `obsidian_create` builds the full
 `folder/name.md` path itself and hands it to the CLI already finished, so note

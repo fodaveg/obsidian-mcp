@@ -6,7 +6,7 @@
 import { z } from "zod";
 
 import { kv } from "../cli.js";
-import { buildCreatePath } from "../paths.js";
+import { assertUsableFilename, buildCreatePath, destinationFilename } from "../paths.js";
 import { jsonRows } from "../structured.js";
 import { defineTool } from "./registry.js";
 import { fileParam, pathParam, totalParam } from "./params.js";
@@ -182,14 +182,28 @@ export const fileTools = [
     inputSchema: {
       file: fileParam,
       path: pathParam,
-      to: z.string().describe('Destination folder or path, e.g. "Archive/2026/".'),
+      to: z
+        .string()
+        .describe(
+          'Destination folder, e.g. "Archive/2026/", or a full path that also renames the note, ' +
+            'e.g. "Archive/2026/Nota A.md". When it ends in a filename, that filename may not ' +
+            'carry : * ? " < > | \\ (Obsidian Sync loops on them and Windows rejects them); the ' +
+            "folders it goes through are used as typed."
+        ),
     },
     writes: true,
     requireTarget: true,
     command: "move",
     // Moving rewrites every wikilink pointing at the note, so it is vault-wide work.
     tier: "slow",
-    tokens: ({ file, path, to }) => kv({ file, path, to }),
+    // A `to` that ends in a file creates that filename, and it gets the same rules as `name` does
+    // on create. A `to` that is a folder creates no name at all, so there is nothing to check --
+    // and the folders in either form are the user's, not ours to police. See src/paths.ts.
+    tokens: ({ file, path, to }) => {
+      const newName = destinationFilename(to);
+      if (newName) assertUsableFilename(newName);
+      return kv({ file, path, to });
+    },
   }),
 
   defineTool({
@@ -209,7 +223,9 @@ export const fileTools = [
         .string()
         .describe(
           'New name for the note, e.g. "Smart Notes - Summary". Never put : * ? " < > | / \\ in a ' +
-            "filename: Obsidian Sync's cross-platform rules choke on them."
+            "filename: Obsidian Sync's cross-platform rules choke on them, and they are rejected " +
+            "here. Dots, accents, dashes and parentheses are fine. The name is passed to the CLI " +
+            "as given; the note stays in its folder, so use obsidian_move to change that."
         ),
     },
     writes: true,
@@ -217,7 +233,16 @@ export const fileTools = [
     command: "rename",
     // Same as move: the link rewrite spans the whole vault.
     tier: "slow",
-    tokens: ({ file, path, name }) => kv({ file, path, name }),
+    // `name` IS the new filename, whole, so it gets the create rules in full. Checked as typed:
+    // whether the CLI wants the ".md" suffix here is not something this server decides (it does
+    // not add one), and trimming or completing the name would be a different change.
+    tokens: ({ file, path, name }) => {
+      assertUsableFilename(
+        name,
+        "A rename keeps the note in its folder; use obsidian_move to send it to another one."
+      );
+      return kv({ file, path, name });
+    },
   }),
 
   defineTool({

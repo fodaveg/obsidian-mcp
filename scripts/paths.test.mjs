@@ -3,7 +3,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildCreatePath, normalizeVaultPath } from "../dist/paths.js";
+import { assertUsableFilename, buildCreatePath, destinationFilename, normalizeVaultPath } from "../dist/paths.js";
 import { kv } from "../dist/cli.js";
 
 const JD_FOLDER =
@@ -127,6 +127,37 @@ test("an escape attempt is still reported as one, not as a bad filename", () => 
 test("requires a name when the path is not a full .md path", () => {
   assert.throws(() => buildCreatePath(undefined, "Inbox/"), /Provide `name`/);
   assert.throws(() => buildCreatePath("   ", "Inbox/"), /Provide `name`/);
+});
+
+test("destinationFilename tells a destination folder from a full path to a file", () => {
+  // A file: an extension is a dot, a letter, then letters or digits, at the end of the segment.
+  assert.equal(destinationFilename("Archivo/2026/Nota A.md"), "Nota A.md");
+  assert.equal(destinationFilename("Nota A.md"), "Nota A.md");
+  assert.equal(destinationFilename("Adjuntos/imagen.png"), "imagen.png");
+  assert.equal(destinationFilename("Tableros/Mapa.canvas"), "Mapa.canvas");
+  // A folder: no dot at all, or a dot that is part of the name rather than an extension.
+  assert.equal(destinationFilename("Archivo/2026/"), undefined);
+  assert.equal(destinationFilename("Archivo/2026"), undefined);
+  assert.equal(destinationFilename("33.11 Notas y organización/"), undefined);
+  assert.equal(destinationFilename("Archivo/Draft v1.2.3"), undefined);
+  assert.equal(destinationFilename("  Archivo/2026//  "), undefined);
+});
+
+test("destinationFilename resolves an ambiguous last segment towards folder", () => {
+  // The two mistakes do not cost the same: reading a file as a folder only skips a check, while
+  // reading a folder as a file would apply the filename rules to a folder the user already has.
+  assert.equal(destinationFilename("Proyecto: 2026"), undefined);
+  assert.equal(destinationFilename("Notas v2.0"), undefined);
+  assert.equal(destinationFilename("Proyecto: 2026/Nota A.md"), "Nota A.md");
+});
+
+test("assertUsableFilename says where the folder belongs, and the caller decides where that is", () => {
+  // Create's advice ("the folder goes in `path`") is wrong for a rename, whose `path` addresses
+  // the note being renamed, so the message is the caller's to supply.
+  assert.throws(() => assertUsableFilename("a/b"), /Pass the folder in `path`/);
+  assert.throws(() => assertUsableFilename("a/b", "Use obsidian_move instead."), /Use obsidian_move instead/);
+  assert.doesNotThrow(() => assertUsableFilename("00.05 Instrucciones para agentes"));
+  assert.throws(() => assertUsableFilename("Planificación: 3 enfoques"), /contains the character :/);
 });
 
 test("kv emits booleans as bare CLI tokens, never as --flags", () => {
