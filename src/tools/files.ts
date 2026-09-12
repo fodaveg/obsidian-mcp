@@ -113,7 +113,11 @@ export const fileTools = [
         .optional()
         .describe(
           'Name of the new note, with or without the ".md" suffix, e.g. "Smart Notes - Summary (Ahrens)". ' +
-            "Dots are kept. Ignored when `path` already ends in \".md\"."
+            'Dots, accents, dashes and parentheses are kept, but : * ? " < > | \\ are rejected ' +
+            "(they send Obsidian Sync into a loop and are illegal on Windows) and so is \"/\", " +
+            "which belongs in `path`: the folder is not part of the name. Those characters are " +
+            "fine in the note's title inside the note, just not in its filename. Ignored when " +
+            '`path` already ends in ".md".'
         ),
       path: z
         .string()

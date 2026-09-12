@@ -60,6 +60,70 @@ test("rejects paths that leave the vault", () => {
   assert.throws(() => normalizeVaultPath("Inbox/../../escape.md"), /outside the vault/);
 });
 
+test("rejects every character Obsidian Sync cannot live with in a filename", () => {
+  // One per character: a single one of these in a FILENAME sends Obsidian Sync into a retry
+  // loop (measured 18 Jul 2026), and Windows refuses the file outright.
+  for (const character of [":", "*", "?", '"', "<", ">", "|", "\\"]) {
+    assert.throws(
+      () => buildCreatePath(`Planificación${character} 3 enfoques`, "Inbox/"),
+      new RegExp(`contains the character \\${character}`),
+      `"${character}" should be rejected in a note name`
+    );
+  }
+  // The message points at where the character IS allowed: the title inside the note.
+  assert.throws(() => buildCreatePath("Planificación: 3 enfoques"), /TITLE/);
+  assert.throws(() => buildCreatePath("Planificación: 3 enfoques"), /Obsidian Sync/);
+});
+
+test("rejects a slash in the name, pointing at `path` instead", () => {
+  assert.throws(() => buildCreatePath("con/barra dentro", "carpeta/"), /"\/" separates folders/);
+  assert.throws(() => buildCreatePath("con/barra dentro", "carpeta/"), /Pass the folder in `path`/);
+  // It is a different family from the Sync characters, so it does not borrow their message:
+  // a slash is legal in a path, it is just not part of a name.
+  assert.throws(
+    () => buildCreatePath("a/b", "Inbox"),
+    (error) => !/Obsidian Sync/.test(error.message)
+  );
+});
+
+test("rejects control characters in the name", () => {
+  assert.throws(() => buildCreatePath("Nota\tcon tabulador", "Inbox"), /control character U\+0009/);
+  assert.throws(() => buildCreatePath("Nota\ncon salto", "Inbox"), /control character U\+000A/);
+});
+
+test("keeps accepting the names people actually use", () => {
+  assert.equal(
+    buildCreatePath("00.05 Instrucciones para agentes", "Inbox/"),
+    "Inbox/00.05 Instrucciones para agentes.md"
+  );
+  assert.equal(
+    buildCreatePath("Smart Notes - Resumen (Ahrens) v1.2", "33.11 Notas/"),
+    "33.11 Notas/Smart Notes - Resumen (Ahrens) v1.2.md"
+  );
+  assert.equal(buildCreatePath("Nota con 'comilla simple' & signo #1", ""), "Nota con 'comilla simple' & signo #1.md");
+});
+
+test("a full .md path is checked on its filename only, never on its folders", () => {
+  // The filename is the last segment, and it gets the same rules as `name`.
+  assert.throws(
+    () => buildCreatePath(undefined, "Inbox/Planificación: 3 enfoques.md"),
+    /contains the character :/
+  );
+  // The folders are not ours to police: one that already exists in the vault, whatever its
+  // name, must stay addressable. Rejecting it here would break access to notes that work today.
+  assert.equal(
+    buildCreatePath(undefined, "Proyecto: 2026/Nota A.md"),
+    "Proyecto: 2026/Nota A.md"
+  );
+  assert.equal(buildCreatePath("Nota A", "Proyecto: 2026/Sub|carpeta"), "Proyecto: 2026/Sub|carpeta/Nota A.md");
+});
+
+test("an escape attempt is still reported as one, not as a bad filename", () => {
+  // `..` and absolute paths keep their own message even though they also carry a slash.
+  assert.throws(() => buildCreatePath("../Nota", "Inbox"), /outside the vault/);
+  assert.throws(() => buildCreatePath("Nota", "/Users/someone/vault"), /absolute path/);
+});
+
 test("requires a name when the path is not a full .md path", () => {
   assert.throws(() => buildCreatePath(undefined, "Inbox/"), /Provide `name`/);
   assert.throws(() => buildCreatePath("   ", "Inbox/"), /Provide `name`/);

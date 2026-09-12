@@ -333,6 +333,13 @@ Sync into a loop. These characters are fine in the note **title** (frontmatter /
 `# H1`), just not in the `.md` filename. When creating or renaming notes through
 this server, sanitize filenames accordingly.
 
+`obsidian_create` enforces this on the way in: a `name` carrying one of those
+characters, a control character, or a `/` (the folder belongs in `path`, not in
+the name) is rejected with an error saying which character is the problem,
+before anything is written. The check covers the **filename** only — when `path`
+is a full `.md` path, its last segment — so folders that already exist in your
+vault stay addressable whatever they are called.
+
 Dots, on the other hand, are safe: `obsidian_create` builds the full
 `folder/name.md` path itself and hands it to the CLI already finished, so note
 names like `Draft v1.2.3` and folders with an ID such as `33.11 Notes/` survive
