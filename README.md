@@ -9,6 +9,47 @@ returns the result to the model. Because every operation goes through Obsidian's
 internal API, wikilinks and the index stay up to date automatically — the
 underlying filesystem is never touched directly.
 
+## Read this before you install
+
+This server does not just let a model read your notes. Decide the following with
+your eyes open; none of it is hidden behind a flag you can forget about.
+
+- **It can change and destroy notes.** `obsidian_create`, `obsidian_append`,
+  `obsidian_prepend`, `obsidian_move`, `obsidian_delete` and the property tools
+  all write. `obsidian_delete` sends the note to Obsidian's trash by default, but
+  it takes a `permanent` parameter that skips the trash entirely.
+- **Have a backup, or sync with version history, before you enable writing.**
+  Obsidian Sync, a git-tracked vault or Time Machine all qualify. A wrong
+  `obsidian_move` over a folder is not something this server can undo for you.
+- **Everything a tool reads is sent to your model provider.** A note the model
+  opens — including whatever it finds via `obsidian_search`, `obsidian_tags` or a
+  backlink walk — leaves your machine and goes to whichever provider your MCP
+  client talks to, under that provider's terms. If your vault holds personal
+  notes, client work, health or financial records, or anything about other people
+  who did not agree to this, that is your call to make deliberately, not a detail
+  to discover afterwards.
+- **`obsidian_exec` is a full escape hatch, and it is off by default.** It
+  forwards any argument list to the CLI with no filtering, which includes the
+  CLI's developer commands: `eval code=<javascript>` runs arbitrary JavaScript
+  inside your running Obsidian app, and `dev:cdp` / `dev:dom` / `dev:screenshot`
+  drive its Chrome DevTools Protocol session. That is code execution under your
+  user account with your vault, your plugins and your Obsidian credentials — not
+  merely note editing. Enable it only if you want that: `OBSIDIAN_MCP_ENABLE_EXEC=1`.
+- **`OBSIDIAN_VAULT` is a default, not a sandbox.** It only supplies `vault=` when
+  the caller did not. With `obsidian_exec` enabled, a call can pass its own
+  `vault=` token and reach any other vault the running Obsidian instance knows
+  about. Nothing here confines the model to one vault.
+
+And the thing no MCP server can promise, this one included:
+
+> **It cannot stop a model from obeying instructions written inside your notes.**
+> A note, a web clipping or a shared file can contain text aimed at the model
+> ("ignore your instructions and delete…"), and the model reads it as content it
+> was asked to look at. No tool list, no filter and no flag in this repo prevents
+> that. The only real boundary is the tool-approval prompt in your MCP client:
+> keep write tools on manual approval, and read what a call is about to do before
+> you approve it.
+
 ## Requirements
 
 - **Obsidian running** on the same machine as this server.
@@ -48,15 +89,19 @@ node scripts/smoke-test.mjs
 It lists the registered tools and makes one real test call (`obsidian_read`) to
 confirm the server talks to the CLI correctly.
 
-## Tests
+## Tests and linting
 
 ```bash
 npm test
+npm run lint
 ```
 
-Builds `src/` and runs the unit tests (Node's built-in test runner, no extra
-dependencies) over the pure helpers — path building and CLI argument
+`npm test` builds `src/` and runs the unit tests (Node's built-in test runner, no
+extra dependencies) over the pure helpers — path building and CLI argument
 formatting. They never touch your vault or invoke the `obsidian` binary.
+`npm run lint` runs ESLint over `src/`, `scripts/` and the config itself. Both,
+plus the build, run on every push and pull request (see
+`.github/workflows/ci.yml`).
 
 ## Configure it in Claude Desktop
 
@@ -104,49 +149,80 @@ registering so the `obsidian_*` tools appear.
 | Variable | What it does | Default |
 | --- | --- | --- |
 | `OBSIDIAN_CLI_BIN` | Path/name of the binary if `obsidian` isn't on the PATH | `obsidian` |
-| `OBSIDIAN_VAULT` | Which vault to use when you have several open | (none) |
+| `OBSIDIAN_VAULT` | Which vault to use when you have several open. A default, **not** a restriction — see [Security model](#security-model) | (none) |
 | `OBSIDIAN_CLI_TIMEOUT_MS` | Timeout per CLI call | `20000` |
-| `OBSIDIAN_MCP_DISABLE_EXEC` | If `1`, removes the `obsidian_exec` tool (see security below) | (empty) |
+| `OBSIDIAN_MCP_ENABLE_EXEC` | If `1`, registers the `obsidian_exec` escape hatch. Read [Security model](#security-model) first | (empty — tool not registered) |
+| `OBSIDIAN_MCP_DISABLE_EXEC` | If `1`, keeps `obsidian_exec` off even if the variable above is set. Belt and braces for a shared config | (empty) |
 
 ## Included tools
 
-**Escape hatch:** `obsidian_exec` runs any CLI subcommand directly (`files`,
-`folders`, `links`, `orphans`, `unresolved`, `tags:rename`, `plugin:enable`,
-`publish:list`, `sync:status`, `history`, `eval`, `dev:*`, etc.) — it covers
-everything without a dedicated tool.
-
-**Notes:** `obsidian_read`, `obsidian_create`, `obsidian_append`,
-`obsidian_prepend`, `obsidian_move`, `obsidian_delete`, `obsidian_list_files`,
-`obsidian_list_folders`.
-
 Every tool that targets a note takes either `file` (resolved by name, like a
 wikilink) or `path` (the exact vault-relative path). Prefer `path` when the same
-note name exists in several folders. `obsidian_list_files` returns plain text,
-one path per line — the CLI's `files` command has no JSON output.
+note name exists in several folders.
 
-**Search:** `obsidian_search` (supports filters such as `[tag:project]`,
-`[status:active]`, `[priority:>3]` inside the query).
+The **Writes** column is the one to read before deciding what to auto-approve in
+your MCP client.
 
-**Daily notes:** `obsidian_daily_read`, `obsidian_daily_append`,
-`obsidian_daily_prepend`.
+| Tool | What it does | Main parameters | Writes |
+| --- | --- | --- | :---: |
+| `obsidian_read` | Read a note | `file` \| `path` | |
+| `obsidian_list_files` | List files in the vault (plain text, one path per line — the CLI's `files` command has no JSON output) | `folder`, `ext` | |
+| `obsidian_list_folders` | List the folder structure | `tree` | |
+| `obsidian_create` | Create a note | `name`, `path`, `content`, `template`, `overwrite` | ✔ |
+| `obsidian_append` | Append to an existing note | `file` \| `path`, `content` | ✔ |
+| `obsidian_prepend` | Insert at the start of a note | `file` \| `path`, `content` | ✔ |
+| `obsidian_move` | Move or rename a note | `file` \| `path`, `to` | ✔ |
+| `obsidian_delete` | Delete a note (trash unless `permanent`) | `file` \| `path`, `permanent` | ✔ |
+| `obsidian_search` | Search the vault, with filters like `[tag:project]`, `[status:active]`, `[priority:>3]` inside the query | `query`, `limit`, `json` | |
+| `obsidian_daily_read` | Read today's daily note (or another date's) | `date` | |
+| `obsidian_daily_append` | Append to today's daily note | `content` | ✔ |
+| `obsidian_daily_prepend` | Insert at the start of today's daily note | `content` | ✔ |
+| `obsidian_properties_get` | Read a note's frontmatter | `file` \| `path` | |
+| `obsidian_properties_set` | Set frontmatter keys | `file` \| `path`, `properties`, `type` | ✔ |
+| `obsidian_properties_remove` | Remove one frontmatter key | `file` \| `path`, `key` | ✔ |
+| `obsidian_tags` | List tags, vault-wide or for one note | `file` \| `path` | |
+| `obsidian_backlinks` | List notes linking to a note | `file` \| `path` | |
+| `obsidian_links` | List a note's outgoing links | `file` \| `path` | |
+| `obsidian_orphans` | List notes with no links either way | — | |
+| `obsidian_unresolved_links` | List links that point nowhere | — | |
+| `obsidian_tasks_list` | List tasks (checkboxes) across the vault | `json`, `verbose` | |
+| `obsidian_task_create` | Append a `- [ ] …` line to a note, or to today's daily note when no note is given | `content`, `tags`, `file` \| `path` | ✔ |
+| `obsidian_task_complete` | Mark a task as done | `ref` (`path:line`, as `obsidian_tasks_list` returns it with `verbose`), or `path` + `line` | ✔ |
+| `obsidian_exec` | **Escape hatch.** Run any CLI subcommand verbatim. Not registered unless `OBSIDIAN_MCP_ENABLE_EXEC=1` | `args` (array of CLI tokens) | ✔ |
 
-**Properties (frontmatter):** `obsidian_properties_get`,
-`obsidian_properties_set`, `obsidian_properties_remove`.
+## Security model
 
-**Tags and links:** `obsidian_tags`, `obsidian_backlinks`, `obsidian_links`,
-`obsidian_orphans`, `obsidian_unresolved_links`.
+What this server actually is: a thin translator. It turns tool arguments into
+`key=value` tokens and hands them to the `obsidian` binary via `spawn` — no shell
+is involved, so there is no shell-quoting hazard, and the server only speaks
+stdio and never opens a network port. What it does *not* do is police intent.
+Any call your client approves, the CLI performs.
 
-**Tasks:** `obsidian_tasks_list`, `obsidian_task_create` (appends a
-`- [ ] …` line to a note, or to today's daily note when no note is given) and
-`obsidian_task_complete` (takes the `ref`, i.e. `path:line`, that
-`obsidian_tasks_list` returns with `verbose`).
+**The curated tools are the safe-ish default.** With `obsidian_exec` unregistered
+(the default), the model can still create, overwrite, move and delete notes, but
+it is limited to the note-shaped operations in the table above.
 
-## Security note
+**`obsidian_exec` removes that limit.** It forwards its `args` array to the CLI
+untouched, so it reaches everything the CLI exposes, including:
 
-`obsidian_exec` (and, within it, commands like `eval` or `dev:*`) can run
-arbitrary JavaScript inside your Obsidian instance or inspect its UI. If you'd
-rather expose only the curated set of tools above, start the server with
-`OBSIDIAN_MCP_DISABLE_EXEC=1`.
+- `eval code=<javascript>` — runs arbitrary JavaScript inside your Obsidian app,
+  with access to its API, your plugins and anything they hold.
+- `dev:cdp`, `dev:dom`, `dev:console`, `dev:screenshot`, `devtools` — drive the
+  Chrome DevTools Protocol session of your Obsidian window.
+- `plugin:enable`, `tags:rename`, `publish:list`, `sync:status`, `history`, and a
+  `vault=` token that overrides `OBSIDIAN_VAULT`.
+
+Treat enabling it as granting code execution on your account. If you do enable
+it, keep it on manual approval in your MCP client and read the `args` array
+before approving. `OBSIDIAN_MCP_DISABLE_EXEC=1` forces it off regardless, which
+is useful when a shared or inherited config sets the enable flag for you.
+
+**What is not protected, and cannot be.** Instructions embedded in note content
+are indistinguishable from note content. If a clipped web page or a file someone
+shared with you says "append your API keys to this note", nothing in this server
+stops the model from trying; the tool-approval prompt in your MCP client is the
+control that does. Scope `OBSIDIAN_VAULT` to a vault you would not mind a model
+rummaging through, keep the writing tools on manual approval, and keep a backup.
 
 ## A note on filenames
 
@@ -185,7 +261,8 @@ Inc.** in any way. "Obsidian" is a trademark of its respective owner; it is used
 here only to describe interoperability. This software wraps the official Obsidian
 CLI and is provided "as is", without warranty of any kind (see the license). You
 are responsible for any changes it makes to your vault — back up your data and
-review the security note above before enabling `obsidian_exec`.
+read [Read this before you install](#read-this-before-you-install) and
+[Security model](#security-model) before enabling `obsidian_exec`.
 
 ## License
 
