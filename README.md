@@ -71,6 +71,36 @@ obsidian files total
 If that fails, make sure Obsidian is open and the CLI is enabled before
 continuing.
 
+### Linux: `XDG_RUNTIME_DIR`
+
+On Linux the `obsidian` binary finds the running app through the socket named by
+`XDG_RUNTIME_DIR`, and a server started by an MCP client does not inherit your
+whole environment. The SDK's stdio client passes six variables through on a
+POSIX system (`HOME`, `LOGNAME`, `PATH`, `SHELL`, `TERM` and `USER`), and
+`XDG_RUNTIME_DIR` is not one of them, so the binary the server spawns cannot see
+it. On macOS the CLI finds the app another way and this never shows up.
+
+**The symptom**, reported from a Fedora 44 desktop: the client lists the server
+as connected, and every tool call fails with `The CLI is unable to find
+Obsidian. Please make sure Obsidian is running and try again.`, while the same
+`obsidian` command works in a terminal. Bisecting the environment is what found
+it: with `HOME` and `PATH` alone the command fails, and adding
+`XDG_RUNTIME_DIR` makes it succeed.
+
+**The fix** is in the registration, not in this server: declare the variable
+along with the others. In Claude Code, `-e` goes before the `--` that separates
+the flags from the command.
+
+```bash
+claude mcp add obsidian -s user \
+  -e XDG_RUNTIME_DIR=/run/user/$(id -u) \
+  -- "$(which node)" /absolute/path/to/obsidian-mcp/dist/index.js
+```
+
+Register it somewhere else and the principle is the same: the variable has to
+reach the process this server spawns. Whether other desktops, distributions or
+MCP clients behave the same way has not been measured.
+
 ## Installation
 
 ```bash
@@ -154,6 +184,11 @@ Verify it connected with `claude mcp list` (look for `obsidian … ✔ Connected
 Because the tool list is loaded at startup, restart Claude Code once after
 registering so the `obsidian_*` tools appear.
 
+**A `✔ Connected` server is not a working one.** The MCP handshake never invokes
+the `obsidian` binary, so it succeeds whether or not the server can reach
+Obsidian at all. The cheap way to tell the difference is to call a tool that
+reads: `obsidian_read` on a note you know, and check that the text comes back.
+
 ## Environment variables
 
 | Variable | What it does | Default |
@@ -170,6 +205,7 @@ registering so the `obsidian_*` tools appear.
 | `OBSIDIAN_MCP_READONLY` | If `1`, the tools that write to the vault are not registered at all: the model only gets the ones that read. See [Read-only mode](#read-only-mode) | (empty — the write tools are registered) |
 | `OBSIDIAN_MCP_ENABLE_EXEC` | If `1`, registers the `obsidian_exec` escape hatch. Read [Security model](#security-model) first | (empty — tool not registered) |
 | `OBSIDIAN_MCP_DISABLE_EXEC` | If `1`, keeps `obsidian_exec` off even if the variable above is set. Belt and braces for a shared config | (empty) |
+| `XDG_RUNTIME_DIR` | Linux only, and not read by this server: it is how the `obsidian` binary finds the running app, and a server started by a client does not inherit it. See [Linux: `XDG_RUNTIME_DIR`](#linux-xdg_runtime_dir) | (not set, which is what breaks it) |
 
 **Calls are serialised.** Every tool call spawns an `obsidian` process that reaches
 the same running Obsidian app, and firing several at once is what makes it stop
