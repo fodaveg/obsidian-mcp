@@ -209,6 +209,9 @@ your MCP client.
 | `obsidian_tasks_list` | List tasks (checkboxes) across the vault | `json`, `verbose` | |
 | `obsidian_task_create` | Append a `- [ ] …` line to a note, or to today's daily note when no note is given | `content`, `tags`, `file` \| `path` | ✔ |
 | `obsidian_task_complete` | Mark a task as done | `ref` (`path:line`, as `obsidian_tasks_list` returns it with `verbose`), or `path` + `line` | ✔ |
+| `obsidian_sync_status` | Report whether Obsidian Sync is connected and up to date | — | |
+| `obsidian_history` | List a note's stored versions (file recovery / Sync history) | `file` \| `path` | |
+| `obsidian_history_read` | Read one stored version of a note. Reading only — restoring is deliberately **not** exposed | `file` \| `path`, `version` | |
 | `obsidian_exec` | **Escape hatch.** Run any CLI subcommand verbatim. Not registered unless `OBSIDIAN_MCP_ENABLE_EXEC=1` | `args` (array of CLI tokens) | ✔ |
 
 ## Security model

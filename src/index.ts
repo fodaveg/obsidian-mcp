@@ -928,6 +928,72 @@ server.registerTool(
 );
 
 // ---------------------------------------------------------------------------
+// Sync & version history
+// ---------------------------------------------------------------------------
+//
+// Reading history is exposed; restoring it is not. `history:restore` and `sync:restore`
+// overwrite a note (or a whole vault) with an older copy, which is the one operation here
+// that can destroy work the user never asked to touch. They stay behind obsidian_exec.
+
+server.registerTool(
+  "obsidian_sync_status",
+  {
+    title: "Show sync status",
+    description:
+      "Reports whether Obsidian Sync is connected and up to date. Worth checking before trusting " +
+      "that what you just read is the latest version, and before telling the user a change of " +
+      "yours has reached their other devices.",
+    annotations: { readOnlyHint: true, openWorldHint: true },
+    inputSchema: {},
+  },
+  async () => respond(["sync:status"])
+);
+
+server.registerTool(
+  "obsidian_history",
+  {
+    title: "List a note's versions",
+    description:
+      "Lists the stored versions of a note (Obsidian's file recovery / Sync history), newest " +
+      "first, with the version numbers obsidian_history_read takes. Use it to answer \"when did " +
+      "this note change?\" or to find the state a note was in before an edit.",
+    annotations: { readOnlyHint: true, openWorldHint: true },
+    inputSchema: { file: fileParam, path: pathParam },
+  },
+  async ({ file, path }) => {
+    if (!file && !path) return errorResult(MISSING_TARGET);
+    return respond(["history", ...kv({ file, path })]);
+  }
+);
+
+server.registerTool(
+  "obsidian_history_read",
+  {
+    title: "Read an old version of a note",
+    description:
+      "Returns the contents of one stored version of a note, as listed by obsidian_history. " +
+      "Reading only: nothing here writes the old text back. To actually restore a version, tell " +
+      "the user to use Obsidian's own version history, which shows them a diff before they commit " +
+      "to it.",
+    annotations: { readOnlyHint: true, openWorldHint: true },
+    inputSchema: {
+      file: fileParam,
+      path: pathParam,
+      version: z
+        .number()
+        .int()
+        .positive()
+        .default(1)
+        .describe("Version number from obsidian_history. Defaults to 1, the most recent one."),
+    },
+  },
+  async ({ file, path, version }) => {
+    if (!file && !path) return errorResult(MISSING_TARGET);
+    return respond(["history:read", ...kv({ file, path, version })]);
+  }
+);
+
+// ---------------------------------------------------------------------------
 // Boot
 // ---------------------------------------------------------------------------
 
