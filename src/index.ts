@@ -298,6 +298,34 @@ server.registerTool(
 );
 
 server.registerTool(
+  "obsidian_rename",
+  {
+    title: "Rename a note",
+    description:
+      "Renames a note in place, keeping it in its folder. Always rename through this tool (or " +
+      "obsidian_move) rather than by creating a copy and deleting the original: Obsidian rewrites " +
+      "every wikilink pointing at the note as part of the rename, and a rename done outside the " +
+      "app leaves all of those links broken. Use obsidian_move when the note also changes folder.",
+    // Rewrites wikilinks across the vault, and a second identical call no longer finds the source.
+    annotations: { destructiveHint: true, idempotentHint: false, openWorldHint: true },
+    inputSchema: {
+      file: fileParam,
+      path: pathParam,
+      name: z
+        .string()
+        .describe(
+          'New name for the note, e.g. "Smart Notes - Summary". Never put : * ? " < > | / \\ in a ' +
+            "filename: Obsidian Sync's cross-platform rules choke on them."
+        ),
+    },
+  },
+  async ({ file, path, name }) => {
+    if (!file && !path) return errorResult(MISSING_TARGET);
+    return respond(["rename", ...kv({ file, path, name })]);
+  }
+);
+
+server.registerTool(
   "obsidian_delete",
   {
     title: "Delete a note",

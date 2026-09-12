@@ -15,8 +15,8 @@ This server does not just let a model read your notes. Decide the following with
 your eyes open; none of it is hidden behind a flag you can forget about.
 
 - **It can change and destroy notes.** `obsidian_create`, `obsidian_append`,
-  `obsidian_prepend`, `obsidian_move`, `obsidian_delete` and the property tools
-  all write. `obsidian_delete` sends the note to Obsidian's trash by default, but
+  `obsidian_prepend`, `obsidian_move`, `obsidian_rename`, `obsidian_delete` and
+  the property tools all write. `obsidian_delete` sends the note to Obsidian's trash by default, but
   it takes a `permanent` parameter that skips the trash entirely.
 - **Have a backup, or sync with version history, before you enable writing.**
   Obsidian Sync, a git-tracked vault or Time Machine all qualify. A wrong
@@ -179,7 +179,8 @@ your MCP client.
 | `obsidian_create` | Create a note | `name`, `path`, `content`, `template`, `overwrite` | ✔ |
 | `obsidian_append` | Append to an existing note | `file` \| `path`, `content` | ✔ |
 | `obsidian_prepend` | Insert at the start of a note | `file` \| `path`, `content` | ✔ |
-| `obsidian_move` | Move or rename a note | `file` \| `path`, `to` | ✔ |
+| `obsidian_move` | Move a note to another folder (or to another path) | `file` \| `path`, `to` | ✔ |
+| `obsidian_rename` | Rename a note in place; Obsidian updates the wikilinks pointing at it | `file` \| `path`, `name` | ✔ |
 | `obsidian_delete` | Delete a note (trash unless `permanent`) | `file` \| `path`, `permanent` | ✔ |
 | `obsidian_file_info` | Show a note's metadata (path, size, dates) without its contents | `file` \| `path` | |
 | `obsidian_folder_info` | Show a folder's file/subfolder counts and size | `path` (required), `info` (`files`/`folders`/`size`) | |
