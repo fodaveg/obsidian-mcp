@@ -5,8 +5,19 @@
 import { z } from "zod";
 
 import { kv } from "../cli.js";
+import { jsonRows } from "../structured.js";
 import { defineTool } from "./registry.js";
 import { fileParam, pathParam, totalParam } from "./params.js";
+
+/**
+ * The `format=json` switch for the three commands here that have one. Their own default is TSV;
+ * this server asks for JSON like it does everywhere else, so the client also gets the rows parsed
+ * as structuredContent instead of a table it has to split.
+ */
+const jsonParam = z
+  .boolean()
+  .default(true)
+  .describe("Return machine-readable JSON instead of the CLI's tab-separated rendering.");
 
 export const linkTools = [
   defineTool({
@@ -20,13 +31,28 @@ export const linkTools = [
       file: fileParam,
       path: pathParam,
       byCount: z.boolean().default(false).describe("Sort tags by how often they're used."),
+      json: jsonParam,
       total: totalParam,
     },
     // Both targets are optional here: with neither, the CLI lists the whole vault.
     command: "tags",
     tier: "slow",
-    tokens: ({ file, path, byCount, total }) =>
-      kv({ file, path, sort: byCount ? "count" : undefined, total }),
+    tokens: ({ file, path, byCount, json, total }) =>
+      kv({
+        file,
+        path,
+        sort: byCount ? "count" : undefined,
+        format: json ? "json" : undefined,
+        total,
+      }),
+    output: {
+      key: "tags",
+      schema: jsonRows,
+      description:
+        "One entry per tag, as the CLI's own JSON. Absent when the call asked for plain text or " +
+        "for `total`, and when the output had to be truncated.",
+      when: ({ json }) => json,
+    },
   }),
 
   defineTool({
@@ -53,12 +79,21 @@ export const linkTools = [
     title: "List backlinks to a note",
     description: "Lists every note that links to the given note.",
     annotations: { readOnlyHint: true, openWorldHint: true },
-    inputSchema: { file: fileParam, path: pathParam, total: totalParam },
+    inputSchema: { file: fileParam, path: pathParam, json: jsonParam, total: totalParam },
     requireTarget: true,
     command: "backlinks",
     // Backlinks are found by looking at every other note in the vault.
     tier: "slow",
-    tokens: ({ file, path, total }) => kv({ file, path, total }),
+    tokens: ({ file, path, json, total }) =>
+      kv({ file, path, format: json ? "json" : undefined, total }),
+    output: {
+      key: "backlinks",
+      schema: jsonRows,
+      description:
+        "One entry per note linking to the target, as the CLI's own JSON. Absent when the call " +
+        "asked for plain text or for `total`, and when the output had to be truncated.",
+      when: ({ json }) => json,
+    },
   }),
 
   defineTool({
@@ -89,10 +124,18 @@ export const linkTools = [
     title: "List unresolved links",
     description: "Lists links in the vault that don't resolve to an existing note.",
     annotations: { readOnlyHint: true, openWorldHint: true },
-    inputSchema: { total: totalParam },
+    inputSchema: { json: jsonParam, total: totalParam },
     command: "unresolved",
     tier: "slow",
-    tokens: ({ total }) => kv({ total }),
+    tokens: ({ json, total }) => kv({ format: json ? "json" : undefined, total }),
+    output: {
+      key: "links",
+      schema: jsonRows,
+      description:
+        "One entry per unresolved link, as the CLI's own JSON. Absent when the call asked for " +
+        "plain text or for `total`, and when the output had to be truncated.",
+      when: ({ json }) => json,
+    },
   }),
 
   defineTool({

@@ -1,0 +1,57 @@
+/**
+ * Structured output: handing back the CLI's JSON as JSON.
+ *
+ * Several commands answer with JSON when asked (`format=json`), and until now the server passed
+ * that JSON on as a STRING inside the text block, so every client had to parse it again --
+ * while cli.ts had already parsed it and thrown the result away. The tools that ask for JSON
+ * declare an `outputSchema` and return `structuredContent` as well (the text block stays: the
+ * spec asks for it, and a client that ignores structuredContent would otherwise get nothing).
+ *
+ * THE SHAPE IS THE CLI'S, NOT OURS, and most of it is not measured. So the declared schemas are
+ * permissive, and the data only becomes structuredContent if it actually matches: a shape we
+ * guessed wrong degrades to text-only instead of turning a good answer into an error. Measured
+ * on the Obsidian CLI 1.14.1: `tasks format=json` returns entries with exactly `status`, `text`,
+ * `file` and `line`, and `line` arrives as a STRING.
+ */
+import { z } from "zod";
+
+import type { CliResult } from "./cli.js";
+
+/**
+ * The value schema for a command whose JSON is a list of rows this server has not measured field
+ * by field: an array of JSON values, nothing said about each one.
+ *
+ * It is deliberately this vague. Guessing the fields and getting one wrong would not fail loudly
+ * -- it would silently drop the structured answer for every call (see structuredData) -- and the
+ * CLI's own help is what says these commands return rows: each of them renders the same data as
+ * TSV or CSV when asked.
+ */
+export const jsonRows = z.array(z.unknown());
+
+/**
+ * The structuredContent for one CLI result: `{ [key]: data }` when the call produced JSON that
+ * fits `schema`, and `{}` when it did not.
+ *
+ * Why `{}` rather than nothing: a tool that declares an outputSchema and answers without
+ * structuredContent is rejected by the SDK before the client sees it -- measured, the client gets
+ * "Output validation error: ... no structured content was provided" INSTEAD of the CLI's text.
+ * An empty object is the honest "no structured data for this call", and it keeps the text intact.
+ * That happens for the calls that legitimately produce no JSON:
+ *   - the plain-text modes (`json: false`, `format` other than json),
+ *   - `total`, which answers with a count,
+ *   - and a TRUNCATED stream, which is no longer parseable JSON even when it starts like some
+ *     (see truncationNotice in cli.ts; the text block carries that warning).
+ */
+export function structuredData(
+  result: CliResult,
+  key: string,
+  schema: z.ZodType
+): Record<string, unknown> {
+  // A cut stream is not data: whatever survived is half an answer, and passing it on as
+  // structured content would make a partial listing look complete.
+  if (result.truncatedBytes > 0) return {};
+  if (result.json === undefined) return {};
+
+  const parsed = schema.safeParse(result.json);
+  return parsed.success ? { [key]: parsed.data } : {};
+}

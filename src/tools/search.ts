@@ -5,6 +5,7 @@
 import { z } from "zod";
 
 import { kv } from "../cli.js";
+import { jsonRows } from "../structured.js";
 import { defineTool } from "./registry.js";
 import { totalParam } from "./params.js";
 
@@ -44,6 +45,14 @@ export const searchTools = [
     tier: "slow",
     tokens: ({ query, path, limit, caseSensitive, json, total }) =>
       kv({ query, path, limit, case: caseSensitive, format: json ? "json" : undefined, total }),
+    output: {
+      key: "results",
+      schema: jsonRows,
+      description:
+        "The matching files, as the CLI's own JSON. Absent when the call asked for plain text " +
+        "or for `total`, and when the output had to be truncated.",
+      when: ({ json }) => json,
+    },
   }),
 
   defineTool({
@@ -79,5 +88,13 @@ export const searchTools = [
     tier: "slow",
     tokens: ({ query, path, limit, caseSensitive, json }) =>
       kv({ query, path, limit, case: caseSensitive, format: json ? "json" : undefined }),
+    output: {
+      key: "results",
+      schema: jsonRows,
+      description:
+        "The matches with their surrounding lines, as the CLI's own JSON. Absent when the call " +
+        "asked for plain text, and when the output had to be truncated.",
+      when: ({ json }) => json,
+    },
   }),
 ];

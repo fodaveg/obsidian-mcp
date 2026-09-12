@@ -4,6 +4,7 @@
 import { z } from "zod";
 
 import { kv } from "../cli.js";
+import { jsonRows } from "../structured.js";
 import { defineTool } from "./registry.js";
 import { fileParam, pathParam } from "./params.js";
 
@@ -63,5 +64,13 @@ export const baseTools = [
     // A base runs a filter over the whole vault and can return every note it matches.
     tier: "slow",
     tokens: ({ file, path, view, format }) => kv({ file, path, view, format }),
+    output: {
+      key: "rows",
+      schema: jsonRows,
+      description:
+        "One entry per row of the view, as the CLI's own JSON. Absent for the csv/tsv/md/paths " +
+        "formats, and when the output had to be truncated.",
+      when: ({ format }) => format === "json",
+    },
   }),
 ];

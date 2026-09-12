@@ -20,6 +20,7 @@ import type { CallToolResult, ToolAnnotations } from "@modelcontextprotocol/sdk/
 import type { z } from "zod";
 
 import { formatResult, runCli, withVault, type CliResult, type TimeoutTier } from "../cli.js";
+import { structuredData } from "../structured.js";
 import { MISSING_TARGET } from "./params.js";
 
 /** An input schema as registerTool takes it: one Zod schema per argument. */
@@ -27,6 +28,24 @@ export type InputShape = Record<string, z.ZodTypeAny>;
 
 /** The parsed arguments a handler receives, derived from the tool's own input shape. */
 export type ToolInput<Shape extends InputShape> = { [K in keyof Shape]: z.output<Shape[K]> };
+
+/**
+ * How a tool declares that it returns the CLI's JSON as structured content too. See
+ * src/structured.ts for what happens when a call produces no JSON after all.
+ */
+export interface StructuredOutput<Shape extends InputShape = InputShape> {
+  /** The single key of structuredContent that carries the data, e.g. `tasks`. */
+  key: string;
+  /** Schema of that key's value. Permissive on purpose: the shape belongs to the CLI. */
+  schema: z.ZodType;
+  /** What the key holds, for the declared outputSchema the client reads. */
+  description: string;
+  /**
+   * Whether THIS call asked the CLI for JSON at all -- most of these tools can also answer in
+   * plain text. Defaults to "always".
+   */
+  when?: (args: ToolInput<Shape>) => boolean;
+}
 
 /**
  * Everything there is to know about one tool.
@@ -85,6 +104,11 @@ export interface ToolSpec<Shape extends InputShape = InputShape> {
   requireTarget?: boolean | string;
   /** Any further argument check. Returns the text to answer with, or undefined when the call is fine. */
   check?: (args: ToolInput<Shape>) => string | undefined;
+  /**
+   * Declared for the tools whose CLI command answers in JSON: they also return that JSON parsed,
+   * as structuredContent, and advertise its shape as their outputSchema.
+   */
+  output?: StructuredOutput<Shape>;
 }
 
 /** A spec with its input shape erased, which is how the registry stores a list of them. */
@@ -116,13 +140,27 @@ export function errorResult(text: string): CallToolResult {
  * shared rather than repeated per tool.
  *
  * Calls are queued, so the wait for a free slot does not eat into the timeout.
+ *
+ * A tool that declared `output` also gets structuredContent -- always, when the call succeeded,
+ * even if it is the empty object that says "no JSON this time". A failed call needs none: the
+ * SDK does not validate the output of a result flagged as an error.
  */
-async function respond(args: string[], tier: TimeoutTier = "normal"): Promise<CallToolResult> {
-  const result: CliResult = await runCli(withVault(args), tier);
-  return {
+async function respond(
+  argv: string[],
+  tier: TimeoutTier = "normal",
+  output?: StructuredOutput,
+  input?: ToolInput<InputShape>
+): Promise<CallToolResult> {
+  const result: CliResult = await runCli(withVault(argv), tier);
+  const answer: CallToolResult = {
     isError: !result.ok,
     content: [{ type: "text" as const, text: formatResult(result) }],
   };
+  if (output && result.ok) {
+    const asked = output.when?.(input ?? {}) ?? true;
+    answer.structuredContent = asked ? structuredData(result, output.key, output.schema) : {};
+  }
+  return answer;
 }
 
 /** Turns a declaration into the handler registerTool calls. */
@@ -147,8 +185,16 @@ function handlerFor(spec: AnyToolSpec) {
     }
 
     if (spec.run) return spec.run(args, command);
-    return respond(argv, spec.tier);
+    return respond(argv, spec.tier, spec.output, args);
   };
+}
+
+/**
+ * The outputSchema a tool with structured output advertises: one optional key holding the data.
+ * Optional because the same tool legitimately answers in plain text (see src/structured.ts).
+ */
+function outputShape(output: StructuredOutput): InputShape {
+  return { [output.key]: output.schema.optional().describe(output.description) };
 }
 
 /**
@@ -173,6 +219,7 @@ export function registerTools(
         description: spec.description,
         annotations: spec.annotations,
         inputSchema: spec.inputSchema,
+        ...(spec.output ? { outputSchema: outputShape(spec.output) } : {}),
       },
       handlerFor(spec) as Parameters<typeof server.registerTool>[2]
     );

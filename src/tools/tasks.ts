@@ -13,6 +13,19 @@ import { buildTaskLine } from "../tasks.js";
 import { defineTool } from "./registry.js";
 import { fileParam, pathParam, totalParam } from "./params.js";
 
+/**
+ * One entry of `tasks format=json`. This is the one shape here that IS measured (Obsidian CLI
+ * 1.14.1): exactly these four keys, and `line` arrives as a string, not a number -- which is why
+ * `ref` is simply `file:line` with no conversion. Loose, so a future extra key does not throw the
+ * structured answer away.
+ */
+const taskEntry = z.looseObject({
+  status: z.string(),
+  text: z.string(),
+  file: z.string(),
+  line: z.string(),
+});
+
 export const taskTools = [
   defineTool({
     name: "obsidian_tasks_list",
@@ -71,6 +84,15 @@ export const taskTools = [
         format: json ? "json" : undefined,
         total,
       }),
+    output: {
+      key: "tasks",
+      schema: z.array(taskEntry),
+      description:
+        "One entry per task, with its status character, text, file and line (as a string, so " +
+        "`ref` is `file:line`). Absent when the call asked for plain text or for `total`, and " +
+        "when the output had to be truncated.",
+      when: ({ json }) => json,
+    },
   }),
 
   defineTool({

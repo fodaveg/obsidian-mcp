@@ -7,6 +7,7 @@ import { z } from "zod";
 
 import { kv } from "../cli.js";
 import { buildCreatePath } from "../paths.js";
+import { jsonRows } from "../structured.js";
 import { defineTool } from "./registry.js";
 import { fileParam, pathParam, totalParam } from "./params.js";
 
@@ -50,6 +51,14 @@ export const fileTools = [
     command: "outline",
     tier: "quick",
     tokens: ({ file, path, format, total }) => kv({ file, path, format, total }),
+    output: {
+      key: "headings",
+      schema: jsonRows,
+      description:
+        "One entry per heading, as the CLI's own JSON. Absent unless `format` is json, and when " +
+        "the call asked for `total` or the output had to be truncated.",
+      when: ({ format }) => format === "json",
+    },
   }),
 
   defineTool({

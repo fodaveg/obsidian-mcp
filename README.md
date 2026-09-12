@@ -217,12 +217,12 @@ your MCP client. It is also exactly the set that disappears under
 | `obsidian_property_read` | Read one frontmatter key's value, without the rest of the block | `name`, `file` \| `path` | |
 | `obsidian_properties_set` | Set frontmatter keys | `file` \| `path`, `properties`, `type` | ✔ |
 | `obsidian_properties_remove` | Remove one frontmatter key. Answers `Removed: <key>` even when the note had no such key, so the reply does not prove it existed | `file` \| `path`, `key` | ✔ |
-| `obsidian_tags` | List tags, vault-wide or for one note | `file` \| `path` | |
+| `obsidian_tags` | List tags, vault-wide or for one note | `file` \| `path`, `byCount`, `json`, `total` | |
 | `obsidian_tag_info` | Show how often one tag is used, and in which notes | `name`, `verbose`, `total` | |
-| `obsidian_backlinks` | List notes linking to a note | `file` \| `path` | |
+| `obsidian_backlinks` | List notes linking to a note | `file` \| `path`, `json`, `total` | |
 | `obsidian_links` | List a note's outgoing links | `file` \| `path` | |
 | `obsidian_orphans` | List notes with no links either way | — | |
-| `obsidian_unresolved_links` | List links that point nowhere | — | |
+| `obsidian_unresolved_links` | List links that point nowhere | `json`, `total` | |
 | `obsidian_deadends` | List notes that link to nothing | `all`, `total` | |
 | `obsidian_tasks_list` | List tasks (checkboxes), across the vault or in one note | `file` \| `path`, `active`, `daily`, `state` (`todo`/`done`), `status`, `json`, `total` | |
 | `obsidian_task_create` | Append a `- [ ] …` line to a note, or to today's daily note when no note is given | `content`, `tags`, `file` \| `path` | ✔ |
@@ -231,6 +231,38 @@ your MCP client. It is also exactly the set that disappears under
 | `obsidian_history` | List a note's stored versions (file recovery / Sync history) | `file` \| `path` | |
 | `obsidian_history_read` | Read one stored version of a note. Reading only — restoring is deliberately **not** exposed | `file` \| `path`, `version` | |
 | `obsidian_exec` | **Escape hatch.** Run any CLI subcommand verbatim. Not registered unless `OBSIDIAN_MCP_ENABLE_EXEC=1` | `args` (array of CLI tokens) | ✔ |
+
+## Structured output
+
+Eight tools ask the Obsidian CLI for JSON, so they declare an `outputSchema` and
+return the parsed rows as `structuredContent` as well as the text block: a client
+does not have to parse the answer out of a string it was handed.
+
+| Tool | Key |
+| --- | --- |
+| `obsidian_search`, `obsidian_search_context` | `results` |
+| `obsidian_tasks_list` | `tasks` |
+| `obsidian_tags` | `tags` |
+| `obsidian_backlinks` | `backlinks` |
+| `obsidian_unresolved_links` | `links` |
+| `obsidian_base_query` | `rows` |
+| `obsidian_outline` | `headings` |
+
+The text block is always there too, because the spec asks for it and because a
+client that ignores `structuredContent` would otherwise receive nothing.
+
+The key is **absent** (`structuredContent` is then `{}`) whenever the call did not
+produce JSON: `json: false` or a `format` other than `json`, a `total` request,
+which answers with a count, an output long enough to be cut by
+[`OBSIDIAN_MCP_MAX_OUTPUT_BYTES`](#environment-variables), which is no longer
+parseable, and a shape the declared schema does not recognise. The text block is the whole answer in those cases.
+Only `obsidian_tasks_list` declares the fields of its rows (`status`, `text`,
+`file` and `line`, the last one a string); the rest declare a list and leave the
+item shape to the CLI, so that a guess about it can never suppress a good answer.
+
+`obsidian_tags`, `obsidian_backlinks` and `obsidian_unresolved_links` default to
+`json: true`, like the other tools here; set it to `false` for the CLI's own
+tab-separated rendering.
 
 ## Read-only mode
 
