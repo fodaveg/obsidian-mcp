@@ -195,6 +195,8 @@ your MCP client.
 | `obsidian_daily_read` | Read today's daily note (or another date's) | `date` | |
 | `obsidian_daily_append` | Append to today's daily note | `content` | ✔ |
 | `obsidian_daily_prepend` | Insert at the start of today's daily note | `content` | ✔ |
+| `obsidian_templates` | List the vault's templates | `total` | |
+| `obsidian_template_read` | Read a template's body before applying it with `obsidian_create` | `name`, `resolve`, `title` | |
 | `obsidian_properties_get` | Read a note's frontmatter | `file` \| `path` | |
 | `obsidian_property_read` | Read one frontmatter key's value, without the rest of the block | `name`, `file` \| `path` | |
 | `obsidian_properties_set` | Set frontmatter keys | `file` \| `path`, `properties`, `type` | ✔ |
