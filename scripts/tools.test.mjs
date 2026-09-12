@@ -10,15 +10,22 @@ import assert from "node:assert/strict";
 import { fileTools } from "../dist/tools/files.js";
 import { linkTools } from "../dist/tools/links.js";
 import { propertyTools } from "../dist/tools/properties.js";
+import { taskTools } from "../dist/tools/tasks.js";
+import { registerTools } from "../dist/tools/registry.js";
 
 const byName = (specs, name) => specs.find((spec) => spec.name === name);
 
 const listFolders = byName(fileTools, "obsidian_list_folders");
 const move = byName(fileTools, "obsidian_move");
 const rename = byName(fileTools, "obsidian_rename");
+const aliases = byName(fileTools, "obsidian_aliases");
 const orphans = byName(linkTools, "obsidian_orphans");
 const deadends = byName(linkTools, "obsidian_deadends");
+const tags = byName(linkTools, "obsidian_tags");
+const unresolved = byName(linkTools, "obsidian_unresolved_links");
 const propertiesGet = byName(propertyTools, "obsidian_properties_get");
+const propertiesList = byName(propertyTools, "obsidian_properties_list");
+const tasksList = byName(taskTools, "obsidian_tasks_list");
 
 test("obsidian_list_folders forwards the folder filter and the count", () => {
   assert.deepEqual(listFolders.tokens({ folder: undefined, total: false }), []);
@@ -147,4 +154,147 @@ test("obsidian_move forwards a dotted destination unchanged", () => {
     }),
     ["path=Inbox/Nota A.md", "to=33.11 Notas/00.05 Instrucciones para agentes.md"]
   );
+});
+
+// ---------------------------------------------------------------------------
+// The options the tools grew to match the CLI's own catalogue, and `active`, which is one
+// concept across four commands: aliases, properties, tags and tasks.
+// ---------------------------------------------------------------------------
+
+test("obsidian_tags sends the counts and the sort as the separate tokens they are", () => {
+  assert.deepEqual(
+    tags.tokens({
+      file: undefined,
+      path: undefined,
+      active: false,
+      byCount: true,
+      counts: true,
+      json: true,
+      total: false,
+    }),
+    ["sort=count", "counts", "format=json"]
+  );
+  // `counts` alone does not reorder, `byCount` alone does not add the numbers.
+  assert.deepEqual(
+    tags.tokens({
+      file: "My Note",
+      path: undefined,
+      active: false,
+      byCount: false,
+      counts: true,
+      json: false,
+      total: false,
+    }),
+    ["file=My Note", "counts"]
+  );
+});
+
+test("obsidian_unresolved_links forwards both of the CLI's detail tokens", () => {
+  assert.deepEqual(
+    unresolved.tokens({ counts: true, verbose: false, json: true, total: false }),
+    ["counts", "format=json"]
+  );
+  assert.deepEqual(
+    unresolved.tokens({ counts: false, verbose: true, json: true, total: false }),
+    ["verbose", "format=json"]
+  );
+  assert.deepEqual(unresolved.tokens({ counts: false, verbose: false, json: false, total: true }), [
+    "total",
+  ]);
+});
+
+test("obsidian_properties_list asks for one property, the sort and the count", () => {
+  assert.deepEqual(
+    propertiesList.tokens({ name: undefined, byCount: true, json: true, total: false }),
+    ["sort=count", "format=json"]
+  );
+  assert.deepEqual(
+    propertiesList.tokens({ name: "status", byCount: false, json: true, total: false }),
+    ["name=status", "format=json"]
+  );
+  assert.deepEqual(propertiesList.tokens({ name: undefined, byCount: false, json: true, total: true }), [
+    "format=json",
+    "total",
+  ]);
+});
+
+test("all four tools that take `active` send the bare token and describe it identically", () => {
+  const withActive = [
+    [aliases, { file: undefined, path: undefined, active: true, verbose: false, total: false }],
+    [propertiesGet, { file: undefined, path: undefined, active: true, json: false }],
+    [
+      tags,
+      { file: undefined, path: undefined, active: true, byCount: false, counts: false, json: false, total: false },
+    ],
+    [
+      tasksList,
+      {
+        file: undefined,
+        path: undefined,
+        active: true,
+        daily: false,
+        state: undefined,
+        status: undefined,
+        json: false,
+        total: false,
+      },
+    ],
+  ];
+
+  for (const [spec, args] of withActive) {
+    assert.ok(
+      spec.tokens(args).includes("active"),
+      `${spec.name} dropped the active token: ${JSON.stringify(spec.tokens(args))}`
+    );
+    // Same name, same type, same sentence bar the noun -- the point of sharing activeParam.
+    const described = spec.inputSchema.active.description;
+    assert.match(described, /^Only the \w+ of the note currently open in Obsidian\.$/, spec.name);
+  }
+});
+
+test("the three tools where `active` replaces a note refuse a call that also names one", () => {
+  const conflicting = [
+    [aliases, { file: "My Note", path: undefined, active: true }],
+    [propertiesGet, { file: undefined, path: "A/B.md", active: true }],
+    [tags, { file: "My Note", path: undefined, active: true }],
+  ];
+
+  for (const [spec, args] of conflicting) {
+    assert.match(spec.check(args), /single scope/, spec.name);
+    assert.equal(spec.check({ ...args, active: false }), undefined, spec.name);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// The registry's own rule about `active`, exercised on a synthetic tool so that nothing here
+// goes near the `obsidian` binary: a tool that requires a target is satisfied by `active`.
+// ---------------------------------------------------------------------------
+
+/** Registers one spec against a stub server and hands back the handler it produced. */
+function handlerOf(spec) {
+  let handler;
+  const server = { registerTool: (_name, _config, fn) => (handler = fn) };
+  registerTools(server, [spec], { readonly: false });
+  return handler;
+}
+
+test("`active` counts as naming a target, and nothing else does", async () => {
+  const spec = {
+    name: "synthetic",
+    title: "t",
+    description: "d",
+    annotations: { readOnlyHint: true },
+    inputSchema: {},
+    requireTarget: "Name a note, or use `active`.",
+    command: "noop",
+    run: async () => ({ content: [{ type: "text", text: "ran" }] }),
+  };
+  const handler = handlerOf(spec);
+
+  assert.equal((await handler({ active: true })).content[0].text, "ran");
+  assert.equal((await handler({ file: "My Note" })).content[0].text, "ran");
+
+  const refused = await handler({ active: false });
+  assert.equal(refused.isError, true);
+  assert.equal(refused.content[0].text, "Name a note, or use `active`.");
 });

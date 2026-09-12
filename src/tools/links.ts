@@ -7,7 +7,7 @@ import { z } from "zod";
 import { kv } from "../cli.js";
 import { jsonRows } from "../structured.js";
 import { defineTool } from "./registry.js";
-import { fileParam, pathParam, totalParam } from "./params.js";
+import { activeParam, fileParam, ONE_SCOPE, pathParam, totalParam } from "./params.js";
 
 /**
  * The `format=json` switch for the three commands here that have one. Their own default is TSV;
@@ -46,24 +46,40 @@ export const linkTools = [
     name: "obsidian_tags",
     title: "List tags",
     description:
-      "Lists the tags used in the vault, or only those of one note when `file` or `path` is given, " +
-      "optionally sorted by usage count.",
+      "Lists the tags used in the vault, or only those of one note when `file`, `path` or " +
+      "`active` is given, optionally with their usage counts and sorted by them.",
     annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: {
       file: fileParam,
       path: pathParam,
-      byCount: z.boolean().default(false).describe("Sort tags by how often they're used."),
+      active: activeParam("tags"),
+      // `sort=count` orders the list and `counts` puts the numbers in it: measured on CLI 1.14.1
+      // they really are independent, `tags sort=count format=json` answers `{"tag": "#tema"}`
+      // rows in frequency order with no count anywhere. So the two are separate parameters, and
+      // "which tags are used most, and how much" is both of them.
+      byCount: z.boolean().default(false).describe("Sort tags by how often they're used, most used first."),
+      counts: z
+        .boolean()
+        .default(false)
+        .describe(
+          "Include how many times each tag is used. Unlike `byCount` this does not reorder " +
+            "anything: it adds the number to each entry (as a string, in JSON)."
+        ),
       json: jsonParam,
       total: totalParam,
     },
-    // Both targets are optional here: with neither, the CLI lists the whole vault.
+    // Both named targets are optional here: with none of the three scopes, the CLI lists the
+    // whole vault -- so unlike the other `active` tools this one declares no requireTarget.
+    check: ({ file, path, active }) => (active && (file || path) ? ONE_SCOPE : undefined),
     command: "tags",
     tier: "slow",
-    tokens: ({ file, path, byCount, json, total }) =>
+    tokens: ({ file, path, active, byCount, counts, json, total }) =>
       kv({
         file,
         path,
+        active,
         sort: byCount ? "count" : undefined,
+        counts,
         format: json ? "json" : undefined,
         total,
       }),
@@ -71,8 +87,9 @@ export const linkTools = [
       key: "tags",
       schema: jsonRows,
       description:
-        "One entry per tag, as the CLI's own JSON. Absent when the call asked for plain text or " +
-        "for `total`, and when the output had to be truncated.",
+        "One entry per tag, as the CLI's own JSON: `tag`, plus `count` (a string) when `counts` " +
+        "was asked for. Absent when the call asked for plain text or for `total`, and when the " +
+        "output had to be truncated.",
       when: ({ json }) => json,
     },
   }),
@@ -152,18 +169,45 @@ export const linkTools = [
   defineTool({
     name: "obsidian_unresolved_links",
     title: "List unresolved links",
-    description: "Lists links in the vault that don't resolve to an existing note.",
+    description:
+      "Lists links in the vault that don't resolve to an existing note. The bare listing is the " +
+      "link texts alone, which says what is missing but not where from: ask for `verbose` when " +
+      "the answer has to be actionable (\"which notes point at nothing?\"), since that is the " +
+      "only way to get the notes each broken link was written in.",
     annotations: { readOnlyHint: true, openWorldHint: true },
-    inputSchema: { json: jsonParam, total: totalParam },
+    inputSchema: {
+      counts: z
+        .boolean()
+        .default(false)
+        .describe(
+          "Include how many times each unresolved link is written across the vault (as a " +
+            "string, in JSON). Implied by `verbose`."
+        ),
+      verbose: z
+        .boolean()
+        .default(false)
+        .describe(
+          "Include the notes each unresolved link appears in, as one comma-separated list of " +
+            "paths per entry, and their counts. Much longer than the plain listing."
+        ),
+      json: jsonParam,
+      total: totalParam,
+    },
     command: "unresolved",
     tier: "slow",
-    tokens: ({ json, total }) => kv({ format: json ? "json" : undefined, total }),
+    tokens: ({ counts, verbose, json, total }) =>
+      kv({ counts, verbose, format: json ? "json" : undefined, total }),
     output: {
       key: "links",
       schema: jsonRows,
+      // Measured on CLI 1.14.1: a plain entry is `{"link": "[AR Hotels"}`; with `counts` it also
+      // carries `count` as a string; with `verbose` it carries `count` and `sources`, the paths
+      // joined by ", " in one string rather than a list.
       description:
-        "One entry per unresolved link, as the CLI's own JSON. Absent when the call asked for " +
-        "plain text or for `total`, and when the output had to be truncated.",
+        "One entry per unresolved link, as the CLI's own JSON: `link`, plus `count` (a string) " +
+        "with `counts` or `verbose`, plus `sources` (the paths it appears in, comma-separated in " +
+        "one string) with `verbose`. Absent when the call asked for plain text or for `total`, " +
+        "and when the output had to be truncated.",
       when: ({ json }) => json,
     },
   }),

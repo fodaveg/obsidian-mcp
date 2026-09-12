@@ -11,7 +11,7 @@ import { z } from "zod";
 import { kv } from "../cli.js";
 import { buildTaskLine } from "../tasks.js";
 import { defineTool } from "./registry.js";
-import { fileParam, pathParam, totalParam } from "./params.js";
+import { activeParam, fileParam, pathParam, totalParam } from "./params.js";
 
 /**
  * One entry of `tasks format=json`. This is the one shape here that IS measured (Obsidian CLI
@@ -41,7 +41,8 @@ export const taskTools = [
     inputSchema: {
       file: fileParam,
       path: pathParam,
-      active: z.boolean().default(false).describe("Only the tasks of the note currently open in Obsidian."),
+      // Same wording as on the other three commands that take `active`; see activeParam.
+      active: activeParam("tasks"),
       daily: z.boolean().default(false).describe("Only the tasks of today's daily note."),
       state: z
         .enum(["todo", "done"])

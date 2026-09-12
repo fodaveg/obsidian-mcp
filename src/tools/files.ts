@@ -9,7 +9,7 @@ import { kv } from "../cli.js";
 import { assertUsableFilename, buildCreatePath, destinationFilename } from "../paths.js";
 import { jsonRows } from "../structured.js";
 import { defineTool } from "./registry.js";
-import { fileParam, pathParam, totalParam } from "./params.js";
+import { activeParam, fileParam, ONE_SCOPE, pathParam, totalParam } from "./params.js";
 
 export const fileTools = [
   defineTool({
@@ -332,19 +332,21 @@ export const fileTools = [
     title: "List aliases",
     description:
       "Lists the aliases declared in note frontmatter, across the vault or for one note when " +
-      "`file`/`path` is given. Aliases are the other names a note answers to in wikilinks, so " +
-      "this is what to check when a link or a search by title finds nothing.",
+      "`file`, `path` or `active` is given. Aliases are the other names a note answers to in " +
+      "wikilinks, so this is what to check when a link or a search by title finds nothing.",
     annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: {
       file: fileParam,
       path: pathParam,
+      active: activeParam("aliases"),
       verbose: z.boolean().default(false).describe("Include the path of the note each alias belongs to."),
       total: totalParam,
     },
-    // Both targets are optional: with neither, the CLI covers the whole vault.
+    // All three scopes are optional: with none of them, the CLI covers the whole vault.
+    check: ({ file, path, active }) => (active && (file || path) ? ONE_SCOPE : undefined),
     command: "aliases",
     tier: "slow",
-    tokens: ({ file, path, verbose, total }) => kv({ file, path, verbose, total }),
+    tokens: ({ file, path, active, verbose, total }) => kv({ file, path, active, verbose, total }),
   }),
 
   defineTool({

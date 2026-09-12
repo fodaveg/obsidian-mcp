@@ -207,7 +207,7 @@ belong (`format` (`tree`/`md`/`json`)).
 | `obsidian_file_info` | Show a note's metadata (path, size, dates) without its contents | `file` \| `path` | |
 | `obsidian_folder_info` | Show a folder's file/subfolder counts and size | `path` (required), `info` (`files`/`folders`/`size`) | |
 | `obsidian_wordcount` | Count a note's words and characters | `file` \| `path`, `only` (`words`/`characters`) | |
-| `obsidian_aliases` | List aliases, vault-wide or for one note | `file` \| `path`, `verbose`, `total` | |
+| `obsidian_aliases` | List aliases, vault-wide or for one note | `file` \| `path` \| `active`, `verbose`, `total` | |
 | `obsidian_recents` | List recently opened notes, newest first | `total` | |
 | `obsidian_search` | Search the vault and return the matching files, with filters like `[tag:project]`, `[status:active]`, `[priority:>3]` inside the query | `query`, `path`, `limit`, `caseSensitive`, `json`, `total` | |
 | `obsidian_search_context` | Search and return the matching **lines** with their surrounding text, not just the file names | `query`, `path`, `limit`, `caseSensitive`, `json` | |
@@ -219,16 +219,17 @@ belong (`format` (`tree`/`md`/`json`)).
 | `obsidian_daily_prepend` | Insert at the start of today's daily note | `content` | ✔ |
 | `obsidian_templates` | List the vault's templates | `total` | |
 | `obsidian_template_read` | Read a template's body before applying it with `obsidian_create` | `name`, `resolve`, `title` | |
-| `obsidian_properties_get` | Read a note's frontmatter | `file` \| `path`, `json` | |
+| `obsidian_properties_get` | Read a note's frontmatter | `file` \| `path` \| `active`, `json` | |
+| `obsidian_properties_list` | List the property keys used across the vault, with Obsidian's inferred type and how many notes use each; with `name`, the count for one key | `name`, `byCount`, `json`, `total` | |
 | `obsidian_property_read` | Read one frontmatter key's value, without the rest of the block | `name`, `file` \| `path` | |
 | `obsidian_properties_set` | Set frontmatter keys | `file` \| `path`, `properties`, `type` | ✔ |
 | `obsidian_properties_remove` | Remove one frontmatter key. Answers `Removed: <key>` even when the note had no such key, so the reply does not prove it existed | `file` \| `path`, `key` | ✔ |
-| `obsidian_tags` | List tags, vault-wide or for one note | `file` \| `path`, `byCount`, `json`, `total` | |
+| `obsidian_tags` | List tags, vault-wide or for one note | `file` \| `path` \| `active`, `byCount`, `counts`, `json`, `total` | |
 | `obsidian_tag_info` | Show how often one tag is used, and in which notes | `name`, `verbose`, `total` | |
 | `obsidian_backlinks` | List notes linking to a note | `file` \| `path`, `json`, `total` | |
 | `obsidian_links` | List a note's outgoing links | `file` \| `path`, `total` | |
 | `obsidian_orphans` | List notes nothing links to (no incoming links); their own outgoing links do not matter | `all`, `total` | |
-| `obsidian_unresolved_links` | List links that point nowhere | `json`, `total` | |
+| `obsidian_unresolved_links` | List links that point nowhere; `verbose` adds the notes each one is written in | `counts`, `verbose`, `json`, `total` | |
 | `obsidian_deadends` | List notes that link to nothing | `all`, `total` | |
 | `obsidian_tasks_list` | List tasks (checkboxes), across the vault or in one note | `file` \| `path`, `active`, `daily`, `state` (`todo`/`done`), `status`, `json`, `total` | |
 | `obsidian_task_create` | Append a `- [ ] …` line to a note, or to today's daily note when no note is given | `content`, `tags`, `file` \| `path` | ✔ |
@@ -240,7 +241,7 @@ belong (`format` (`tree`/`md`/`json`)).
 
 ## Structured output
 
-Nine tools ask the Obsidian CLI for JSON, so they declare an `outputSchema` and
+Ten tools ask the Obsidian CLI for JSON, so they declare an `outputSchema` and
 return the parsed rows as `structuredContent` as well as the text block: a client
 does not have to parse the answer out of a string it was handed.
 
@@ -253,7 +254,7 @@ does not have to parse the answer out of a string it was handed.
 | `obsidian_unresolved_links` | `links` |
 | `obsidian_base_query` | `rows` |
 | `obsidian_outline` | `headings` |
-| `obsidian_properties_get` | `properties` |
+| `obsidian_properties_get`, `obsidian_properties_list` | `properties` |
 
 The text block is always there too, because the spec asks for it and because a
 client that ignores `structuredContent` would otherwise receive nothing.
@@ -261,7 +262,9 @@ client that ignores `structuredContent` would otherwise receive nothing.
 `total` wins over `json` in the tools that accept both: measured on CLI 1.14.1,
 `tags`, `unresolved`, `backlinks` and `tasks` ignore the format and answer with
 the bare count, and `search` answers `{"total": n}`. Either way the answer is a
-count rather than the rows, so those calls have no structured content.
+count rather than the rows, so those calls have no structured content. The `name`
+of `obsidian_properties_list` behaves the same way: `properties name=status
+format=json` answers `4`, the number of notes carrying that property.
 
 The key is **absent** (`structuredContent` is then `{}`) whenever the call did not
 produce JSON: `json: false` or a `format` other than `json`, a `total` request,
@@ -272,12 +275,16 @@ Only `obsidian_tasks_list` declares the fields of its rows (`status`, `text`,
 `file` and `line`, the last one a string); the rest declare a list and leave the
 item shape to the CLI, so that a guess about it can never suppress a good answer.
 `obsidian_properties_get` is the one that is not a list at all: its key holds the
-frontmatter as one object, property name → value.
+frontmatter as one object, property name → value. `obsidian_properties_list`
+shares the `properties` key and is a list, one entry per property key used in the
+vault (`name`, `type`, `count`) — the two answer different questions about the
+same word.
 
-`obsidian_tags`, `obsidian_backlinks`, `obsidian_unresolved_links` and
-`obsidian_properties_get` default to `json: true`, like the other tools here; set
-it to `false` for the CLI's own rendering (tab-separated for the first three,
-YAML for the properties).
+`obsidian_tags`, `obsidian_backlinks`, `obsidian_unresolved_links`,
+`obsidian_properties_get` and `obsidian_properties_list` default to `json: true`,
+like the other tools here; set it to `false` for the CLI's own rendering
+(tab-separated for the first three, YAML for a note's properties and a plain list
+of names for the vault's).
 
 ## Read-only mode
 

@@ -4,19 +4,30 @@
 import { z } from "zod";
 
 import { formatResult, kv, runCli, withVault, type CliResult } from "../cli.js";
-import { jsonObject } from "../structured.js";
+import { jsonObject, jsonRows } from "../structured.js";
 import { defineTool } from "./registry.js";
-import { fileParam, pathParam } from "./params.js";
+import {
+  activeParam,
+  fileParam,
+  MISSING_TARGET_OR_ACTIVE,
+  ONE_SCOPE,
+  pathParam,
+  totalParam,
+} from "./params.js";
 
 export const propertyTools = [
   defineTool({
     name: "obsidian_properties_get",
     title: "Get a note's properties",
-    description: "Reads the YAML frontmatter/properties of a note.",
+    description:
+      "Reads the YAML frontmatter/properties of ONE note: the one named by `file`/`path`, or the " +
+      "one open in Obsidian with `active`. For which property keys exist across the vault, use " +
+      "obsidian_properties_list.",
     annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: {
       file: fileParam,
       path: pathParam,
+      active: activeParam("properties"),
       json: z
         .boolean()
         .default(true)
@@ -25,10 +36,16 @@ export const propertyTools = [
             "object back as structured content."
         ),
     },
-    requireTarget: true,
+    // `active` is a target here, not a filter: measured on CLI 1.14.1, `properties active`
+    // answers with the frontmatter of the open note exactly as `properties file=<it>` does.
+    // Without any of the three the same command would list the whole vault instead, which is
+    // obsidian_properties_list's job and a different answer shape.
+    requireTarget: MISSING_TARGET_OR_ACTIVE,
+    check: ({ file, path, active }) => (active && (file || path) ? ONE_SCOPE : undefined),
     command: "properties",
     tier: "quick",
-    tokens: ({ file, path, json }) => kv({ file, path, format: json ? "json" : undefined }),
+    tokens: ({ file, path, active, json }) =>
+      kv({ file, path, active, format: json ? "json" : undefined }),
     output: {
       key: "properties",
       schema: jsonObject,
@@ -37,6 +54,64 @@ export const propertyTools = [
       description:
         "The note's frontmatter as the CLI's own JSON object, property name -> value. Absent " +
         "when the call asked for YAML and when the output had to be truncated.",
+      when: ({ json }) => json,
+    },
+  }),
+
+  defineTool({
+    name: "obsidian_properties_list",
+    title: "List the properties used in the vault",
+    description:
+      "Lists the frontmatter property KEYS used across the vault, with the type Obsidian infers " +
+      "for each one and how many notes use it. This is the tool for \"which properties does this " +
+      "vault use?\" and for checking the spelling of a key before filtering on it; " +
+      "obsidian_properties_get reads the properties OF a note, which is the other question. With " +
+      "`name` it answers how many notes use that single key, which is cheaper than listing.",
+    annotations: { readOnlyHint: true, openWorldHint: true },
+    inputSchema: {
+      name: z
+        .string()
+        .optional()
+        .describe(
+          'Answer only with how many notes use this one property, e.g. "status". A bare count, ' +
+            "so no listing and no structured content."
+        ),
+      byCount: z
+        .boolean()
+        .default(false)
+        .describe("Sort by how many notes use each property, most used first, instead of by name."),
+      json: z
+        .boolean()
+        .default(true)
+        .describe(
+          "Return machine-readable JSON instead of the CLI's plain list of names. Ignored when " +
+            "`name` or `total` is set: both answer with a bare count either way."
+        ),
+      total: totalParam,
+    },
+    // The CLI's `counts` token is deliberately not exposed. Measured on 1.14.1,
+    // `properties format=json` already answers `{"name": …, "type": …, "count": 4}` for every
+    // key, and this tool asks for JSON by default -- so advertising a flag for the number that
+    // is already there would be asking the model to pay for nothing. (Its plain-text mode does
+    // lose the counts; that is what `json: false` is for, and it is not the default path.)
+    command: "properties",
+    // Every note's frontmatter gets read to build this.
+    tier: "slow",
+    tokens: ({ name, byCount, json, total }) =>
+      kv({
+        name,
+        sort: byCount ? "count" : undefined,
+        format: json ? "json" : undefined,
+        total,
+      }),
+    output: {
+      key: "properties",
+      schema: jsonRows,
+      description:
+        "One entry per property key, as the CLI's own JSON: `name`, `type` (Obsidian's inferred " +
+        "property type, e.g. text, date, multitext) and `count`, the number of notes using it, " +
+        "as a number. Absent when the call asked for plain text, for `name` or for `total`, and " +
+        "when the output had to be truncated.",
       when: ({ json }) => json,
     },
   }),

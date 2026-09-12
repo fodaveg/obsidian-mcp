@@ -98,8 +98,9 @@ export interface ToolSpec<Shape extends InputShape = InputShape> {
    */
   writes?: boolean;
   /**
-   * Refuse a call that gave neither `file` nor `path`. `true` answers with MISSING_TARGET; a
-   * string answers with that text instead.
+   * Refuse a call that named no note. `true` answers with MISSING_TARGET; a string answers with
+   * that text instead. `active` counts as naming one: on the commands that take it, it IS the
+   * target (the note open in Obsidian), so a tool that offers it is satisfied by it.
    */
   requireTarget?: boolean | string;
   /** Any further argument check. Returns the text to answer with, or undefined when the call is fine. */
@@ -166,7 +167,7 @@ async function respond(
 /** Turns a declaration into the handler registerTool calls. */
 function handlerFor(spec: AnyToolSpec) {
   return async (args: ToolInput<InputShape>): Promise<CallToolResult> => {
-    if (spec.requireTarget && !args.file && !args.path) {
+    if (spec.requireTarget && !args.file && !args.path && !args.active) {
       return errorResult(typeof spec.requireTarget === "string" ? spec.requireTarget : MISSING_TARGET);
     }
 
