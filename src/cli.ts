@@ -54,7 +54,7 @@ const MAX_CONCURRENCY = readPositiveInt("OBSIDIAN_MCP_CONCURRENCY", 1);
  * context or blows past the client's maximum message size. Override with
  * OBSIDIAN_MCP_MAX_OUTPUT_BYTES.
  */
-const MAX_OUTPUT_BYTES = readPositiveInt("OBSIDIAN_MCP_MAX_OUTPUT_BYTES", 50_000);
+export const MAX_OUTPUT_BYTES = readPositiveInt("OBSIDIAN_MCP_MAX_OUTPUT_BYTES", 50_000);
 
 export interface CliResult {
   ok: boolean;

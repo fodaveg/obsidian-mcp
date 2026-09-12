@@ -1,8 +1,9 @@
 # obsidian-mcp
 
 An MCP server that wraps the **official Obsidian CLI** (`obsidian`, see
-https://obsidian.md/help/cli) and exposes your vault as a set of tools that any
-MCP client (Claude Desktop, Claude Code, etc.) can use.
+https://obsidian.md/help/cli) and exposes your vault as a set of tools — and as
+[resources](#the-vault-as-resources) — that any MCP client (Claude Desktop,
+Claude Code, etc.) can use.
 
 Each tool translates its parameters into a call to the `obsidian` binary and
 returns the result to the model. Because every operation goes through Obsidian's
@@ -101,8 +102,9 @@ npm run check:readme
 ```
 
 `npm test` builds `src/` and runs the unit tests (Node's built-in test runner, no
-extra dependencies) over the pure helpers — path building and CLI argument
-formatting. They never touch your vault or invoke the `obsidian` binary.
+extra dependencies) over the pure helpers — path building, CLI argument
+formatting, and the resource URIs and list cursor. They never touch your vault or
+invoke the `obsidian` binary.
 `npm run lint` runs ESLint over `src/`, `scripts/` and the config itself.
 `npm run check:readme` compares the [tool table](#included-tools) with the tools the
 server registers, so a new parameter cannot land with a stale row; it starts the
@@ -161,7 +163,8 @@ registering so the `obsidian_*` tools appear.
 | `OBSIDIAN_CLI_TIMEOUT_SLOW_MS` | Timeout for the vault-wide ones (searches, listings, tags, backlinks, `obsidian_move`/`obsidian_rename`, `obsidian_exec`) | three times `OBSIDIAN_CLI_TIMEOUT_MS` |
 | `OBSIDIAN_CLI_KILL_GRACE_MS` | How long a timed-out CLI process gets between `SIGTERM` and `SIGKILL` | `2000` |
 | `OBSIDIAN_MCP_CONCURRENCY` | How many CLI processes may run at once. They all talk to the same Obsidian instance, and running them in parallel is what makes it stall, so calls are queued one at a time by default | `1` |
-| `OBSIDIAN_MCP_MAX_OUTPUT_BYTES` | Cap on how much a single call may return. Past it the output is cut and the reply says how much was dropped and how to narrow the query | `50000` |
+| `OBSIDIAN_MCP_MAX_OUTPUT_BYTES` | Cap on how much a single call may return. Past it the output is cut and the reply says how much was dropped and how to narrow the query. It applies to [resources](#the-vault-as-resources) too | `50000` |
+| `OBSIDIAN_MCP_RESOURCE_PAGE_SIZE` | How many resources one `resources/list` page carries before it hands back a `nextCursor` | `200` |
 | `OBSIDIAN_MCP_READONLY` | If `1`, the tools that write to the vault are not registered at all: the model only gets the ones that read. See [Read-only mode](#read-only-mode) | (empty — the write tools are registered) |
 | `OBSIDIAN_MCP_ENABLE_EXEC` | If `1`, registers the `obsidian_exec` escape hatch. Read [Security model](#security-model) first | (empty — tool not registered) |
 | `OBSIDIAN_MCP_DISABLE_EXEC` | If `1`, keeps `obsidian_exec` off even if the variable above is set. Belt and braces for a shared config | (empty) |
@@ -289,6 +292,74 @@ like the other tools here; set it to `false` for the CLI's own rendering
 (tab-separated for the first three, YAML for a note's properties and a plain list
 of names for the vault's).
 
+## The vault as resources
+
+Besides the tools, the server exposes the vault as MCP **resources**: things the
+*user* attaches to a conversation, rather than things the model decides to call.
+Two URI shapes, both read-only:
+
+| URI | What you get |
+| --- | --- |
+| `obsidian://note/<path>` | The note's contents, as `text/markdown` |
+| `obsidian://folder/<path>/` | That folder's **direct** children as JSON — its subfolders and its notes, each with the URI to read next |
+| `obsidian://folder/` | The vault root, which is where a walk of the tree starts |
+
+The path is relative to the vault root and each of its **segments is
+percent-encoded**; the slashes between them are not, so the URI still shows the
+tree. `obsidian://note/33.11%20Notas/Nota%20A.md` is the note
+`33.11 Notas/Nota A.md`. Encoding matters for more than spaces: a `#` in a note
+name would otherwise start a URI fragment and cut the path short.
+
+**Reading a folder is how you descend.** The directory-listing extension some
+clients speak (`resources/directory/read`, entries marked `inode/directory`) is
+not in the MCP SDK this server is built on, so it cannot be declared. A folder
+resource does the same job through an ordinary read: one level at a time, every
+entry carrying its own URI, subfolders told apart from notes — which works on
+every client rather than only on the ones that implement the extension.
+
+```json
+{
+  "folder": "30-39 Conocimiento y herramientas",
+  "folders": [{ "name": "33 Notas", "path": "…/33 Notas", "uri": "obsidian://folder/…/33%20Notas/" }],
+  "notes":   [{ "name": "Nota A.md", "path": "…/Nota A.md", "uri": "obsidian://note/…/Nota%20A.md" }],
+  "complete": true
+}
+```
+
+**`resources/list` is paginated**, because a real vault does not fit in one
+answer. It walks the vault folder by folder and hands back a `nextCursor` until
+it runs out; the cursor is opaque and self-contained, so a client can stop and
+resume later without the server keeping a snapshot alive. Page size is
+[`OBSIDIAN_MCP_RESOURCE_PAGE_SIZE`](#environment-variables). Only Markdown notes
+are listed; any path the CLI can read can still be *read* by URI.
+
+**What a big vault costs, measured** (5496 files, 3212 of them `.md`, 431
+folders, CLI 1.14.1): a full walk of `resources/list` is 22 pages and about 3
+seconds, one `obsidian` process per folder. It is bounded work per request — a
+page stops after 40 folders even if it is not full — but it is still a burst of
+spawns against your running Obsidian, and on one run out of three the app stalled
+long enough for a call to hit its timeout. Attaching a note or reading a folder,
+which is what actually happens in use, is one process.
+
+**The output cap applies here exactly as it does to a tool.** A note longer than
+[`OBSIDIAN_MCP_MAX_OUTPUT_BYTES`](#environment-variables) comes back cut, with
+the same notice appended saying how much was dropped. The same cap also limits
+the listings the walk is built from, and this is the part worth knowing: on the
+vault measured above, 8 of its 431 folders hold more than 50 kB of paths, and for
+those the listing is incomplete. The server never passes that off as a short
+folder — `complete: false` in the folder's JSON, and in `resources/list` the
+folder itself appears in place of its missing notes, saying why. Raising the cap
+removes the gap: at `OBSIDIAN_MCP_MAX_OUTPUT_BYTES=1000000` the same walk listed
+all 3212 notes with no warnings. Notes in the vault **root** are the awkward
+case, because the CLI's `files` command cannot be scoped to it: listing them
+means listing the whole vault, so on a large vault they are what goes missing
+first.
+
+**Resources ignore `OBSIDIAN_MCP_READONLY`.** Reading is the only thing a
+resource can do — there is no `resources/write` — so read-only mode has nothing
+to take away, and the vault stays browsable in the configuration meant for
+browsing it. What read-only removes is the tools that write.
+
 ## Read-only mode
 
 ```bash
@@ -307,6 +378,9 @@ for "let the model consult my vault"; it is also the one to use while you decide
 whether you want the rest. It does not change what leaves your machine: a tool
 that reads still sends what it read to your model provider.
 
+It does not remove the [resources](#the-vault-as-resources) either. They are
+read-only by construction, so there is nothing there for this switch to turn off.
+
 ## Security model
 
 What this server actually is: a thin translator. It turns tool arguments into
@@ -318,6 +392,12 @@ Any call your client approves, the CLI performs.
 **The curated tools are the safe-ish default.** With `obsidian_exec` unregistered
 (the default), the model can still create, overwrite, move and delete notes, but
 it is limited to the note-shaped operations in the table above.
+
+**Resources only ever read, and only inside the vault.** A
+[resource URI](#the-vault-as-resources) becomes a `path=` token for the CLI's
+`read`, `files` and `folders` commands and nothing else, and a URI that walks out
+of the vault (`..`) or names an absolute path is refused before any process is
+spawned — the same rule the writing tools apply to a destination.
 
 **`obsidian_exec` removes that limit.** It forwards its `args` array to the CLI
 untouched, so it reaches everything the CLI exposes, including:
@@ -379,7 +459,8 @@ src/
   cli.ts     -> helper that invokes the `obsidian` binary and parses its output
   paths.ts   -> builds vault-relative paths (works around the CLI's `create` quirks)
   tasks.ts   -> builds the Markdown line for a new task
-  index.ts   -> reads the environment flags, registers the tools, starts the server
+  resources.ts -> the vault as MCP resources: note URIs, folder listings, paging
+  index.ts   -> reads the environment flags, registers the tools and resources, starts the server
   tools/
     registry.ts -> how a tool is declared, and the single handler they all share
     params.ts   -> the input parameters several tools have in common
@@ -403,6 +484,14 @@ and the function that turns its arguments into `key=value` tokens — and
 `src/tools/registry.ts` is the only place that registers one, runs the CLI and
 turns the result into an MCP response. A new tool is a new entry in the domain
 module it belongs to; `writes: true` is what keeps it out of read-only mode.
+
+`src/resources.ts` is the other half of the surface and does not go through that
+registry: it registers `resources/list`, `resources/templates/list` and
+`resources/read` on the low-level server directly, because the SDK's own
+`registerResource` helper answers `resources/list` with every resource at once
+and drops the `cursor` the protocol defines. The `resources` capability is
+declared in `src/index.ts`, in the server constructor, so the whole shape of what
+this server offers is visible in one file.
 
 ## Disclaimer
 
