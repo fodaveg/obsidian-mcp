@@ -519,6 +519,27 @@ server.registerTool(
 );
 
 server.registerTool(
+  "obsidian_property_read",
+  {
+    title: "Read one property of a note",
+    description:
+      "Returns the value of a single frontmatter property. Use it instead of " +
+      "obsidian_properties_get when you already know which key you want (\"what is this note's " +
+      "status?\"): it returns the value alone, not the whole frontmatter block.",
+    annotations: { readOnlyHint: true, openWorldHint: true },
+    inputSchema: {
+      name: z.string().describe('Property name, e.g. "status".'),
+      file: fileParam,
+      path: pathParam,
+    },
+  },
+  async ({ name, file, path }) => {
+    if (!file && !path) return errorResult(MISSING_TARGET);
+    return respond(["property:read", ...kv({ name, file, path })]);
+  }
+);
+
+server.registerTool(
   "obsidian_properties_set",
   {
     title: "Set note properties",
