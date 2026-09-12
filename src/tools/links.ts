@@ -111,7 +111,15 @@ export const linkTools = [
   defineTool({
     name: "obsidian_orphans",
     title: "List orphan notes",
-    description: "Lists notes that have no incoming or outgoing links.",
+    // What the CLI actually does, measured on 1.14.1 against a 5k-note vault: `orphans` returned
+    // 4361 files and `deadends` 4783, sharing 4081 -- neither set contains the other, so they are
+    // not two names for one thing. A file listed only by `orphans` had 3 outgoing links and 0
+    // backlinks; one listed only by `deadends` had 0 outgoing links and 1 backlink.
+    description:
+      "Lists notes that NOTHING links to (no incoming links). Their own outgoing links do not " +
+      "matter: a note that links out but that no note links back to is an orphan. For the " +
+      "opposite question -- notes that link to nothing -- use obsidian_deadends; the two lists " +
+      "overlap without either containing the other, and a note in both is disconnected either way.",
     annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: { total: totalParam },
     command: "orphans",

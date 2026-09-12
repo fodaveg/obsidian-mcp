@@ -221,7 +221,7 @@ your MCP client. It is also exactly the set that disappears under
 | `obsidian_tag_info` | Show how often one tag is used, and in which notes | `name`, `verbose`, `total` | |
 | `obsidian_backlinks` | List notes linking to a note | `file` \| `path`, `json`, `total` | |
 | `obsidian_links` | List a note's outgoing links | `file` \| `path` | |
-| `obsidian_orphans` | List notes with no links either way | — | |
+| `obsidian_orphans` | List notes nothing links to (no incoming links); their own outgoing links do not matter | `total` | |
 | `obsidian_unresolved_links` | List links that point nowhere | `json`, `total` | |
 | `obsidian_deadends` | List notes that link to nothing | `all`, `total` | |
 | `obsidian_tasks_list` | List tasks (checkboxes), across the vault or in one note | `file` \| `path`, `active`, `daily`, `state` (`todo`/`done`), `status`, `json`, `total` | |
