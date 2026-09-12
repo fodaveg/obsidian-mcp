@@ -78,9 +78,15 @@ export const fileTools = [
   defineTool({
     name: "obsidian_list_folders",
     title: "List folders in the vault",
+    // The answer is always a flat list of vault-relative paths, one per line. This tool used to
+    // offer a `tree` option that asked for `format=tree`, and it did nothing: the CLI's help for
+    // `folders` documents only `folder` and `total`, and measured on 1.14.1 the output of
+    // `folders format=tree` is byte for byte the output of `folders` -- both scoped to a folder
+    // (6 lines) and over the whole vault (431 lines). The description promised a hierarchy the
+    // model never got, so the option is gone rather than documented as a no-op.
     description:
-      "Lists the vault's folder structure, one folder per line, or only what hangs below one " +
-      "folder when `folder` is given.",
+      "Lists the vault's folder structure as a flat list of paths, one folder per line, or only " +
+      "what hangs below one folder when `folder` is given.",
     annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: {
       folder: z
@@ -89,12 +95,11 @@ export const fileTools = [
         .describe(
           'Only this folder and the ones under it, e.g. "33 Notes". Omit for the whole vault.'
         ),
-      tree: z.boolean().default(false).describe("Render as a hierarchical tree instead of a flat list."),
       total: totalParam,
     },
     command: "folders",
     tier: "slow",
-    tokens: ({ folder, tree, total }) => kv({ folder, format: tree ? "tree" : undefined, total }),
+    tokens: ({ folder, total }) => kv({ folder, total }),
   }),
 
   defineTool({

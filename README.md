@@ -191,7 +191,7 @@ your MCP client. It is also exactly the set that disappears under
 | `obsidian_read` | Read a note | `file` \| `path` | |
 | `obsidian_outline` | Show a note's heading tree without its body | `file` \| `path`, `format` (`tree`/`md`/`json`), `total` | |
 | `obsidian_list_files` | List files in the vault (plain text, one path per line — the CLI's `files` command has no JSON output) | `folder`, `ext` | |
-| `obsidian_list_folders` | List the folder structure, whole or below one folder | `folder`, `tree`, `total` | |
+| `obsidian_list_folders` | List the folder structure as a flat list of paths, whole or below one folder | `folder`, `total` | |
 | `obsidian_create` | Create a note | `name`, `path`, `content`, `template`, `overwrite` | ✔ |
 | `obsidian_append` | Append to an existing note | `file` \| `path`, `content` | ✔ |
 | `obsidian_prepend` | Insert at the start of a note | `file` \| `path`, `content` | ✔ |

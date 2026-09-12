@@ -16,7 +16,7 @@ export const execTools = [
       "Runs `obsidian <args...>` directly against the Obsidian CLI (requires Obsidian to be open " +
       "with CLI support enabled). Use this for anything not covered by the dedicated tools below, e.g.:\n" +
       '  ["files", "folder=Projects"]\n' +
-      '  ["folders", "format=tree"]\n' +
+      '  ["folders", "folder=Projects"]\n' +
       '  ["links", "file=My Note"]\n' +
       '  ["unresolved"]\n' +
       '  ["orphans"]\n' +

@@ -21,14 +21,19 @@ const deadends = byName(linkTools, "obsidian_deadends");
 const propertiesGet = byName(propertyTools, "obsidian_properties_get");
 
 test("obsidian_list_folders forwards the folder filter and the count", () => {
-  assert.deepEqual(listFolders.tokens({ folder: undefined, tree: false, total: false }), []);
-  assert.deepEqual(listFolders.tokens({ folder: "33 Notes", tree: false, total: false }), [
-    "folder=33 Notes",
-  ]);
-  assert.deepEqual(listFolders.tokens({ folder: undefined, tree: true, total: true }), [
-    "format=tree",
-    "total",
-  ]);
+  assert.deepEqual(listFolders.tokens({ folder: undefined, total: false }), []);
+  assert.deepEqual(listFolders.tokens({ folder: "33 Notes", total: false }), ["folder=33 Notes"]);
+  assert.deepEqual(listFolders.tokens({ folder: undefined, total: true }), ["total"]);
+});
+
+// `folders` has no `format` token at all (its CLI help lists `folder` and `total`, and
+// `format=tree` measured byte-identical to a plain call), so nothing here may ask for one.
+test("obsidian_list_folders never asks the CLI for a format", () => {
+  assert.equal("tree" in listFolders.inputSchema, false);
+  assert.deepEqual(
+    listFolders.tokens({ folder: "33 Notes", total: true }).filter((t) => t.startsWith("format=")),
+    []
+  );
 });
 
 test("both link-health listings forward `all` as the bare token the CLI takes", () => {
