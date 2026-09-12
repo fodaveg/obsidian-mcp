@@ -316,6 +316,106 @@ server.registerTool(
 );
 
 // ---------------------------------------------------------------------------
+// Inventory: metadata about a file, a folder or the vault
+// ---------------------------------------------------------------------------
+
+server.registerTool(
+  "obsidian_file_info",
+  {
+    title: "Show a note's metadata",
+    description:
+      "Returns what Obsidian knows about a file -- its path, size and dates -- without its " +
+      "contents. Use it to check that a note exists, or how recently it changed, before deciding " +
+      "to read it.",
+    annotations: { readOnlyHint: true, openWorldHint: true },
+    inputSchema: { file: fileParam, path: pathParam },
+  },
+  async ({ file, path }) => {
+    if (!file && !path) return errorResult(MISSING_TARGET);
+    return respond(["file", ...kv({ file, path })]);
+  }
+);
+
+server.registerTool(
+  "obsidian_folder_info",
+  {
+    title: "Show a folder's metadata",
+    description:
+      "Returns a summary of a folder: how many files and subfolders it holds and how much space " +
+      "it takes. Use `info` to get one of those numbers on its own; it is much cheaper than " +
+      "listing the folder with obsidian_list_files and counting.",
+    annotations: { readOnlyHint: true, openWorldHint: true },
+    inputSchema: {
+      path: z.string().describe('Folder path relative to the vault root, e.g. "33.11 Notes". Required.'),
+      info: z
+        .enum(["files", "folders", "size"])
+        .optional()
+        .describe("Return only the file count, the subfolder count or the size. Omit for all of them."),
+    },
+  },
+  async ({ path, info }) => respond(["folder", ...kv({ path, info })])
+);
+
+server.registerTool(
+  "obsidian_wordcount",
+  {
+    title: "Count a note's words and characters",
+    description:
+      "Counts the words and characters of a note. Use it to size a note before reading it, or to " +
+      "answer \"how long is this?\" without pulling the text into context.",
+    annotations: { readOnlyHint: true, openWorldHint: true },
+    inputSchema: {
+      file: fileParam,
+      path: pathParam,
+      only: z
+        .enum(["words", "characters"])
+        .optional()
+        .describe("Return just one of the two counts. Omit to get both."),
+    },
+  },
+  async ({ file, path, only }) => {
+    if (!file && !path) return errorResult(MISSING_TARGET);
+    return respond([
+      "wordcount",
+      ...kv({ file, path, words: only === "words", characters: only === "characters" }),
+    ]);
+  }
+);
+
+server.registerTool(
+  "obsidian_aliases",
+  {
+    title: "List aliases",
+    description:
+      "Lists the aliases declared in note frontmatter, across the vault or for one note when " +
+      "`file`/`path` is given. Aliases are the other names a note answers to in wikilinks, so " +
+      "this is what to check when a link or a search by title finds nothing.",
+    annotations: { readOnlyHint: true, openWorldHint: true },
+    inputSchema: {
+      file: fileParam,
+      path: pathParam,
+      verbose: z.boolean().default(false).describe("Include the path of the note each alias belongs to."),
+      total: totalParam,
+    },
+  },
+  // Both targets are optional: with neither, the CLI covers the whole vault.
+  async ({ file, path, verbose, total }) => respond(["aliases", ...kv({ file, path, verbose, total })])
+);
+
+server.registerTool(
+  "obsidian_recents",
+  {
+    title: "List recently opened notes",
+    description:
+      "Lists the notes the user opened most recently, newest first. This is the fastest way to " +
+      'pick up "the note I was just working on" without guessing its name.',
+    annotations: { readOnlyHint: true, openWorldHint: true },
+    inputSchema: { total: totalParam },
+  },
+  async ({ total }) => respond(["recents", ...kv({ total })])
+);
+
+// ---------------------------------------------------------------------------
 // Search
 // ---------------------------------------------------------------------------
 

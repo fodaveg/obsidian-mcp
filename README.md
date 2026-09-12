@@ -181,6 +181,11 @@ your MCP client.
 | `obsidian_prepend` | Insert at the start of a note | `file` \| `path`, `content` | ✔ |
 | `obsidian_move` | Move or rename a note | `file` \| `path`, `to` | ✔ |
 | `obsidian_delete` | Delete a note (trash unless `permanent`) | `file` \| `path`, `permanent` | ✔ |
+| `obsidian_file_info` | Show a note's metadata (path, size, dates) without its contents | `file` \| `path` | |
+| `obsidian_folder_info` | Show a folder's file/subfolder counts and size | `path` (required), `info` (`files`/`folders`/`size`) | |
+| `obsidian_wordcount` | Count a note's words and characters | `file` \| `path`, `only` (`words`/`characters`) | |
+| `obsidian_aliases` | List aliases, vault-wide or for one note | `file` \| `path`, `verbose`, `total` | |
+| `obsidian_recents` | List recently opened notes, newest first | `total` | |
 | `obsidian_search` | Search the vault and return the matching files, with filters like `[tag:project]`, `[status:active]`, `[priority:>3]` inside the query | `query`, `path`, `limit`, `caseSensitive`, `json`, `total` | |
 | `obsidian_search_context` | Search and return the matching **lines** with their surrounding text, not just the file names | `query`, `path`, `limit`, `caseSensitive`, `json` | |
 | `obsidian_bases` | List the vault's bases (`.base` files) | — | |
