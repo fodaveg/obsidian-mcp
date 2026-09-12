@@ -307,11 +307,30 @@ src/
   cli.ts     -> helper that invokes the `obsidian` binary and parses its output
   paths.ts   -> builds vault-relative paths (works around the CLI's `create` quirks)
   tasks.ts   -> builds the Markdown line for a new task
-  index.ts   -> MCP server definition and all the tools
+  index.ts   -> reads the environment flags, registers the tools, starts the server
+  tools/
+    registry.ts -> how a tool is declared, and the single handler they all share
+    params.ts   -> the input parameters several tools have in common
+    exec.ts     -> the raw-command escape hatch
+    files.ts    -> reading, listing, creating, moving and deleting notes; file/folder info
+    search.ts   -> full-text search, with and without matching lines
+    bases.ts    -> listing and querying bases
+    daily.ts    -> daily notes
+    templates.ts-> listing and reading templates
+    properties.ts-> YAML frontmatter
+    links.ts    -> tags, links, backlinks, orphans, unresolved links, dead ends
+    tasks.ts    -> listing, creating and completing checkboxes
+    history.ts  -> sync status and version history
 scripts/
   smoke-test.mjs -> quick manual test without needing an MCP client
   *.test.mjs     -> unit tests for the pure helpers (`npm test`)
 ```
+
+Each tool is a declaration — name, texts, annotations, input schema, CLI command,
+and the function that turns its arguments into `key=value` tokens — and
+`src/tools/registry.ts` is the only place that registers one, runs the CLI and
+turns the result into an MCP response. A new tool is a new entry in the domain
+module it belongs to; `writes: true` is what keeps it out of read-only mode.
 
 ## Disclaimer
 

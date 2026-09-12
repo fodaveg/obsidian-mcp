@@ -1,0 +1,107 @@
+/**
+ * Properties (YAML frontmatter).
+ */
+import { z } from "zod";
+
+import { formatResult, kv, runCli, withVault, type CliResult } from "../cli.js";
+import { defineTool } from "./registry.js";
+import { fileParam, pathParam } from "./params.js";
+
+export const propertyTools = [
+  defineTool({
+    name: "obsidian_properties_get",
+    title: "Get a note's properties",
+    description: "Reads the YAML frontmatter/properties of a note.",
+    annotations: { readOnlyHint: true, openWorldHint: true },
+    inputSchema: { file: fileParam, path: pathParam },
+    requireTarget: true,
+    command: "properties",
+    tier: "quick",
+    tokens: ({ file, path }) => kv({ file, path }),
+  }),
+
+  defineTool({
+    name: "obsidian_property_read",
+    title: "Read one property of a note",
+    description:
+      "Returns the value of a single frontmatter property. Use it instead of " +
+      "obsidian_properties_get when you already know which key you want (\"what is this note's " +
+      "status?\"): it returns the value alone, not the whole frontmatter block.",
+    annotations: { readOnlyHint: true, openWorldHint: true },
+    inputSchema: {
+      name: z.string().describe('Property name, e.g. "status".'),
+      file: fileParam,
+      path: pathParam,
+    },
+    requireTarget: true,
+    command: "property:read",
+    tier: "quick",
+    tokens: ({ name, file, path }) => kv({ name, file, path }),
+  }),
+
+  defineTool({
+    name: "obsidian_properties_set",
+    title: "Set note properties",
+    description:
+      "Sets one or more frontmatter properties on a note, e.g. { status: 'active', tags: 'pkm,obsidian' }. " +
+      "The CLI sets one property per call, so this runs one call per key and reports them all together.",
+    // A key that already existed keeps no copy of its old value, so destructiveHint is left
+    // undeclared on purpose and the client keeps its cautious default.
+    annotations: { idempotentHint: true, openWorldHint: true },
+    inputSchema: {
+      file: fileParam,
+      path: pathParam,
+      properties: z
+        .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+        .describe('Property name -> value, e.g. { "status": "active" }'),
+      type: z
+        .enum(["text", "list", "number", "checkbox", "date", "datetime"])
+        .optional()
+        .describe("Property type, applied to every property in this call. Defaults to Obsidian's own guess."),
+    },
+    writes: true,
+    requireTarget: true,
+    check: ({ properties }) =>
+      Object.entries(properties).length === 0 ? "Provide at least one property to set." : undefined,
+    command: "property:set",
+    // One CLI call per key, so this one does not go through the registry's single-call path.
+    run: async ({ file, path, properties, type }, command) => {
+      const lines: string[] = [];
+      let failed = false;
+      for (const [name, value] of Object.entries(properties)) {
+        // The property name is the VALUE of the `name=` token, never a token name of its own:
+        // it comes from the model and an Obsidian property may legitimately be called "Due date",
+        // which kv() would (rightly) refuse as a CLI option name.
+        const result: CliResult = await runCli(
+          withVault([command, `name=${name}`, `value=${value}`, ...kv({ type, file, path })])
+        );
+        // One failed key fails the batch: the CLI answers `Error: Invalid number: a,b` on stdout
+        // with exit code 0, so without this the whole call would be reported as a success.
+        if (!result.ok) failed = true;
+        lines.push(`${name}: ${formatResult(result)}`);
+      }
+
+      return { isError: failed, content: [{ type: "text" as const, text: lines.join("\n") }] };
+    },
+  }),
+
+  defineTool({
+    name: "obsidian_properties_remove",
+    title: "Remove a note property",
+    description:
+      "Removes a single frontmatter key from a note. The CLI answers `Removed: <key>` whether or " +
+      "not the note had that property, so the reply is not evidence that it existed: check with " +
+      "obsidian_property_read first when that matters (e.g. before telling the user you cleared " +
+      "something).",
+    annotations: { destructiveHint: true, idempotentHint: true, openWorldHint: true },
+    inputSchema: {
+      file: fileParam,
+      path: pathParam,
+      key: z.string().describe('Property name to remove, e.g. "status".'),
+    },
+    writes: true,
+    requireTarget: true,
+    command: "property:remove",
+    tokens: ({ file, path, key }) => kv({ name: key, file, path }),
+  }),
+];
