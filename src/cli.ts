@@ -9,6 +9,22 @@ const DEFAULT_VAULT = process.env.OBSIDIAN_VAULT?.trim();
 /** How long to wait for the CLI (and therefore the running Obsidian app) to respond. */
 const TIMEOUT_MS = Number(process.env.OBSIDIAN_CLI_TIMEOUT_MS) || 20_000;
 
+/** Default cap for a single CLI stream, in bytes. Roughly 12-15k tokens of plain text. */
+const DEFAULT_MAX_OUTPUT_BYTES = 50_000;
+
+/**
+ * How much of each stream is handed back to the MCP client. Listing a large vault or
+ * searching without `limit` can produce hundreds of kB, which either buries the model's
+ * context or blows past the client's maximum message size. Override with
+ * OBSIDIAN_MCP_MAX_OUTPUT_BYTES.
+ */
+const MAX_OUTPUT_BYTES = readMaxOutputBytes();
+
+function readMaxOutputBytes(): number {
+  const raw = Number(process.env.OBSIDIAN_MCP_MAX_OUTPUT_BYTES);
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : DEFAULT_MAX_OUTPUT_BYTES;
+}
+
 export interface CliResult {
   ok: boolean;
   code: number | null;
@@ -16,6 +32,8 @@ export interface CliResult {
   stderr: string;
   /** stdout parsed as JSON when it looked like JSON, otherwise undefined. */
   json?: unknown;
+  /** Bytes dropped across both streams because they exceeded the cap. 0 when nothing was cut. */
+  truncatedBytes: number;
 }
 
 export class CliError extends Error {
@@ -23,6 +41,78 @@ export class CliError extends Error {
     super(message);
     this.name = "CliError";
   }
+}
+
+/**
+ * Byte length of the incomplete UTF-8 sequence at the end of `buf`, or 0 when it ends on a
+ * character boundary. A UTF-8 character is at most 4 bytes, so only the last 3 can be partial.
+ */
+function danglingUtf8Bytes(buf: Buffer): number {
+  for (let back = 1; back <= Math.min(4, buf.length); back++) {
+    const byte = buf[buf.length - back];
+    if ((byte & 0b1100_0000) === 0b1000_0000) continue; // continuation byte: keep walking back
+    const expected = byte >= 0xf0 ? 4 : byte >= 0xe0 ? 3 : byte >= 0xc0 ? 2 : 1;
+    return expected > back ? back : 0;
+  }
+  return 0;
+}
+
+/**
+ * Collects one of the child process's streams, keeping at most `maxBytes` and merely counting
+ * everything after that. The excess is discarded as it arrives rather than buffered and cut at
+ * the end, so a `files` listing of a huge vault never sits in memory in full.
+ */
+export class CappedStream {
+  private readonly chunks: Buffer[] = [];
+  private keptBytes = 0;
+  private droppedBytes = 0;
+
+  constructor(private readonly maxBytes: number) {}
+
+  push(chunk: Buffer): void {
+    const room = this.maxBytes - this.keptBytes;
+    if (room <= 0) {
+      this.droppedBytes += chunk.length;
+      return;
+    }
+    if (chunk.length <= room) {
+      this.chunks.push(chunk);
+      this.keptBytes += chunk.length;
+      return;
+    }
+    this.chunks.push(chunk.subarray(0, room));
+    this.keptBytes += room;
+    this.droppedBytes += chunk.length - room;
+  }
+
+  /** How many bytes were thrown away. */
+  get dropped(): number {
+    return this.droppedBytes;
+  }
+
+  /**
+   * The kept bytes as text. When the stream was cut, the cap may have landed in the middle of a
+   * multi-byte character, so the trailing partial sequence is dropped instead of decoding to a
+   * replacement character. Nothing is trimmed when the stream fit whole.
+   */
+  text(): string {
+    const buf = Buffer.concat(this.chunks);
+    if (this.droppedBytes === 0) return buf.toString("utf8");
+    return buf.subarray(0, buf.length - danglingUtf8Bytes(buf)).toString("utf8");
+  }
+}
+
+/**
+ * The note appended to a truncated result. It has to be explicit: a silently cut list looks
+ * exactly like a short one, and the model would report it as complete.
+ */
+export function truncationNotice(droppedBytes: number, maxBytes: number): string {
+  return (
+    `[Output truncated at ${maxBytes} bytes; ${droppedBytes} more bytes were dropped. ` +
+    "What you see above is incomplete -- and no longer parseable if it was JSON. " +
+    "Narrow the request down (folder=, ext=, limit=) and run it again, " +
+    "or raise OBSIDIAN_MCP_MAX_OUTPUT_BYTES in the server's environment.]"
+  );
 }
 
 /**
@@ -37,8 +127,8 @@ export function runCli(args: string[]): Promise<CliResult> {
       env: process.env,
     });
 
-    let stdout = "";
-    let stderr = "";
+    const stdout = new CappedStream(MAX_OUTPUT_BYTES);
+    const stderr = new CappedStream(MAX_OUTPUT_BYTES);
     let timedOut = false;
 
     const timer = setTimeout(() => {
@@ -46,12 +136,8 @@ export function runCli(args: string[]): Promise<CliResult> {
       child.kill("SIGKILL");
     }, TIMEOUT_MS);
 
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString("utf8");
-    });
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString("utf8");
-    });
+    child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
+    child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
 
     child.on("error", (err) => {
       clearTimeout(timer);
@@ -81,8 +167,9 @@ export function runCli(args: string[]): Promise<CliResult> {
       const result: CliResult = {
         ok: code === 0,
         code,
-        stdout: stdout.trim(),
-        stderr: stderr.trim(),
+        stdout: stdout.text().trim(),
+        stderr: stderr.text().trim(),
+        truncatedBytes: stdout.dropped + stderr.dropped,
       };
       const parsed = tryParseJson(result.stdout);
       if (parsed !== undefined) result.json = parsed;
@@ -134,11 +221,16 @@ export function withVault(args: string[]): string[] {
 
 /** Formats a CliResult into the text block returned to the MCP client. */
 export function formatResult(result: CliResult): string {
+  const lines: string[] = [];
   if (result.ok) {
-    return result.stdout || "(sin salida)";
+    lines.push(result.stdout || "(sin salida)");
+  } else {
+    lines.push(`El comando de Obsidian CLI terminó con código ${result.code}.`);
+    if (result.stderr) lines.push(`stderr: ${result.stderr}`);
+    if (result.stdout) lines.push(`stdout: ${result.stdout}`);
   }
-  const lines = [`El comando de Obsidian CLI terminó con código ${result.code}.`];
-  if (result.stderr) lines.push(`stderr: ${result.stderr}`);
-  if (result.stdout) lines.push(`stdout: ${result.stdout}`);
+  if (result.truncatedBytes > 0) {
+    lines.push(truncationNotice(result.truncatedBytes, MAX_OUTPUT_BYTES));
+  }
   return lines.join("\n");
 }
