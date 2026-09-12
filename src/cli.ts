@@ -106,13 +106,18 @@ function tryParseJson(text: string): unknown | undefined {
  * Builds `key=value` style CLI arguments from an object, skipping undefined/empty
  * values. Values are passed as-is (the CLI expects `key=value`, not shell-quoted --
  * we bypass the shell entirely via spawn, so no quoting is needed).
+ *
+ * Booleans become a bare token (`overwrite`, `permanent`), which is the only form
+ * the CLI understands: it silently ignores `--overwrite`, so `create ... --overwrite`
+ * used to write a duplicate note instead of overwriting, and `delete ... --permanent`
+ * moved the note to the trash. A false boolean emits nothing.
  */
 export function kv(params: Record<string, string | number | boolean | undefined>): string[] {
   const out: string[] = [];
   for (const [key, value] of Object.entries(params)) {
     if (value === undefined || value === "") continue;
     if (typeof value === "boolean") {
-      if (value) out.push(`--${key}`);
+      if (value) out.push(key);
       continue;
     }
     out.push(`${key}=${value}`);

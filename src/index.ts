@@ -3,6 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { formatResult, kv, runCli, withVault, type CliResult } from "./cli.js";
+import { buildCreatePath } from "./paths.js";
 
 const DISABLE_EXEC = ["1", "true", "yes"].includes(
   (process.env.OBSIDIAN_MCP_DISABLE_EXEC || "").toLowerCase()
@@ -19,6 +20,14 @@ async function respond(args: string[]) {
   return {
     isError: !result.ok,
     content: [{ type: "text" as const, text: formatResult(result) }],
+  };
+}
+
+/** Builds an error CallToolResult without going near the CLI. */
+function errorResult(text: string) {
+  return {
+    isError: true,
+    content: [{ type: "text" as const, text }],
   };
 }
 
@@ -76,9 +85,7 @@ server.registerTool(
     },
   },
   async ({ file, path }) => {
-    if (!file && !path) {
-      return { isError: true, content: [{ type: "text", text: "Provide either `file` or `path`." }] };
-    }
+    if (!file && !path) return errorResult("Provide either `file` or `path`.");
     return respond(["read", ...kv({ file, path })]);
   }
 );
@@ -114,17 +121,42 @@ server.registerTool(
   "obsidian_create",
   {
     title: "Create a note",
-    description: "Creates a new note, optionally from a template and/or with initial content.",
+    description:
+      "Creates a new note, optionally from a template and/or with initial content. The note is " +
+      "written at `path`/`name`.md: the name may contain dots, accents, dashes or parentheses, and " +
+      "folders whose name carries an ID (e.g. \"33.11 Notes/\") work as typed. Missing folders are " +
+      "created. Paths are relative to the vault root.",
     inputSchema: {
-      name: z.string().describe("Name of the new note (without .md)."),
-      path: z.string().optional().describe("Destination folder, e.g. \"Content/\"."),
+      name: z
+        .string()
+        .optional()
+        .describe(
+          'Name of the new note, with or without the ".md" suffix, e.g. "Smart Notes - Summary (Ahrens)". ' +
+            "Dots are kept. Ignored when `path` already ends in \".md\"."
+        ),
+      path: z
+        .string()
+        .optional()
+        .describe(
+          'Destination folder, relative to the vault root, e.g. "33.11 Notes/" (a trailing slash is ' +
+            'optional). If it already ends in ".md" it is used as the full destination path and `name` ' +
+            "is ignored."
+        ),
       content: z.string().optional(),
       template: z.string().optional().describe("Name of an existing template note to apply."),
       overwrite: z.boolean().default(false).describe("Overwrite if a note with this name already exists."),
     },
   },
-  async ({ name, path, content, template, overwrite }) =>
-    respond(["create", ...kv({ name, path, content, template, overwrite })])
+  async ({ name, path, content, template, overwrite }) => {
+    let target: string;
+    try {
+      // The CLI mangles `name`+`path`, so we always hand it the finished path. See src/paths.ts.
+      target = buildCreatePath(name, path);
+    } catch (err) {
+      return errorResult((err as Error).message);
+    }
+    return respond(["create", ...kv({ path: target, content, template, overwrite })]);
+  }
 );
 
 server.registerTool(

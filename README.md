@@ -48,6 +48,16 @@ node scripts/smoke-test.mjs
 It lists the registered tools and makes one real test call (`obsidian_read`) to
 confirm the server talks to the CLI correctly.
 
+## Tests
+
+```bash
+npm test
+```
+
+Builds `src/` and runs the unit tests (Node's built-in test runner, no extra
+dependencies) over the pure helpers — path building and CLI argument
+formatting. They never touch your vault or invoke the `obsidian` binary.
+
 ## Configure it in Claude Desktop
 
 Edit `~/Library/Application Support/Claude/claude_desktop_config.json`
@@ -139,14 +149,24 @@ Sync into a loop. These characters are fine in the note **title** (frontmatter /
 `# H1`), just not in the `.md` filename. When creating or renaming notes through
 this server, sanitize filenames accordingly.
 
+Dots, on the other hand, are safe: `obsidian_create` builds the full
+`folder/name.md` path itself and hands it to the CLI already finished, so note
+names like `Draft v1.2.3` and folders with an ID such as `33.11 Notes/` survive
+intact. (Left to itself, the CLI replaces everything after the last dot with
+`.md`, which turns `33.11 Notes/` into `33.md`.) Passing a `path` that already
+ends in `.md` is also supported: it is then the exact destination and `name` is
+ignored.
+
 ## Project layout
 
 ```
 src/
   cli.ts     -> helper that invokes the `obsidian` binary and parses its output
+  paths.ts   -> builds vault-relative paths (works around the CLI's `create` quirks)
   index.ts   -> MCP server definition and all the tools
 scripts/
   smoke-test.mjs -> quick manual test without needing an MCP client
+  paths.test.mjs -> unit tests for the pure helpers (`npm test`)
 ```
 
 ## Disclaimer
