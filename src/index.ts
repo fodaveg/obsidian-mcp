@@ -6,9 +6,17 @@ import { formatResult, kv, runCli, withVault, type CliResult } from "./cli.js";
 import { buildCreatePath } from "./paths.js";
 import { buildTaskLine } from "./tasks.js";
 
-const DISABLE_EXEC = ["1", "true", "yes"].includes(
-  (process.env.OBSIDIAN_MCP_DISABLE_EXEC || "").toLowerCase()
-);
+/** Reads a boolean-ish environment variable: `1`, `true` or `yes`, case-insensitive. */
+function envFlag(name: string): boolean {
+  return ["1", "true", "yes"].includes((process.env[name] || "").trim().toLowerCase());
+}
+
+// The escape hatch forwards arbitrary CLI tokens -- including `eval` and `dev:*`, which run
+// JavaScript inside the user's Obsidian -- so it is opt-in: a fresh install exposes only the
+// curated tools. OBSIDIAN_MCP_DISABLE_EXEC stays recognised as an explicit off switch (so an
+// existing configuration keeps working) and wins over the enable flag.
+const ENABLE_EXEC =
+  envFlag("OBSIDIAN_MCP_ENABLE_EXEC") && !envFlag("OBSIDIAN_MCP_DISABLE_EXEC");
 
 const server = new McpServer({
   name: "obsidian-mcp",
@@ -48,7 +56,7 @@ const MISSING_TARGET = "Provide either `file` (note name, like a wikilink) or `p
 // Escape hatch: run any Obsidian CLI command verbatim.
 // ---------------------------------------------------------------------------
 
-if (!DISABLE_EXEC) {
+if (ENABLE_EXEC) {
   server.registerTool(
     "obsidian_exec",
     {
