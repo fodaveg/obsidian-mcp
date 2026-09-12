@@ -53,6 +53,9 @@ const MAX_CONCURRENCY = readPositiveInt("OBSIDIAN_MCP_CONCURRENCY", 1);
  * searching without `limit` can produce hundreds of kB, which either buries the model's
  * context or blows past the client's maximum message size. Override with
  * OBSIDIAN_MCP_MAX_OUTPUT_BYTES.
+ *
+ * This is the DEFAULT, not the only cap: it is sized for output that reaches the model, and a
+ * caller that consumes the output itself and never forwards it can ask runCli for a bigger one.
  */
 export const MAX_OUTPUT_BYTES = readPositiveInt("OBSIDIAN_MCP_MAX_OUTPUT_BYTES", 50_000);
 
@@ -65,6 +68,12 @@ export interface CliResult {
   json?: unknown;
   /** Bytes dropped across both streams because they exceeded the cap. 0 when nothing was cut. */
   truncatedBytes: number;
+  /**
+   * The cap this call's streams were actually held to. Carried on the result because it is no
+   * longer one number for the whole server: a truncation notice that quoted the module constant
+   * would name a limit the call never had.
+   */
+  maxOutputBytes: number;
 }
 
 export class CliError extends Error {
@@ -219,25 +228,33 @@ function releaseSlot(): void {
  *
  * @param args CLI tokens, already including any `vault=`.
  * @param tier Which timeout applies. See TIMEOUTS; defaults to `normal`.
+ * @param maxOutputBytes How much of each stream to keep. Defaults to MAX_OUTPUT_BYTES, which is
+ *        the size for output that ends up in the model's context. Pass a bigger one only when the
+ *        caller PARSES the output and throws the text away, so the size costs memory and nothing
+ *        else -- see the listing cap in src/resources.ts.
  */
-export async function runCli(args: string[], tier: TimeoutTier = "normal"): Promise<CliResult> {
+export async function runCli(
+  args: string[],
+  tier: TimeoutTier = "normal",
+  maxOutputBytes: number = MAX_OUTPUT_BYTES
+): Promise<CliResult> {
   await acquireSlot();
   try {
-    return await spawnCli(args, TIMEOUTS[tier]);
+    return await spawnCli(args, TIMEOUTS[tier], maxOutputBytes);
   } finally {
     releaseSlot();
   }
 }
 
-function spawnCli(args: string[], timeoutMs: number): Promise<CliResult> {
+function spawnCli(args: string[], timeoutMs: number, maxOutputBytes: number): Promise<CliResult> {
   return new Promise((resolve, reject) => {
     const child = spawn(CLI_BIN, args, {
       stdio: ["ignore", "pipe", "pipe"],
       env: process.env,
     });
 
-    const stdout = new CappedStream(MAX_OUTPUT_BYTES);
-    const stderr = new CappedStream(MAX_OUTPUT_BYTES);
+    const stdout = new CappedStream(maxOutputBytes);
+    const stderr = new CappedStream(maxOutputBytes);
     let settled = false;
     let killTimer: NodeJS.Timeout | undefined;
 
@@ -303,6 +320,7 @@ function spawnCli(args: string[], timeoutMs: number): Promise<CliResult> {
         stdout: text,
         stderr: stderr.text().trim(),
         truncatedBytes,
+        maxOutputBytes,
       };
       const parsed = tryParseJson(result.stdout);
       if (parsed !== undefined) result.json = parsed;
@@ -387,7 +405,7 @@ export function formatResult(result: CliResult): string {
     lines.push(`Obsidian CLI exited with code ${result.code}.`);
   }
   if (result.truncatedBytes > 0) {
-    lines.push(truncationNotice(result.truncatedBytes, MAX_OUTPUT_BYTES));
+    lines.push(truncationNotice(result.truncatedBytes, result.maxOutputBytes));
   }
   return lines.join("\n");
 }

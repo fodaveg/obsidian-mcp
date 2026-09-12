@@ -28,10 +28,10 @@
  * client instead of only on the ones that implement the extension, and it is what lets a client
  * descend area -> category -> note instead of swallowing the vault.
  *
- * THE EXISTING LIMITS ALL STILL APPLY, because every call here goes through runCli: the output cap
- * cuts a huge note exactly as it cuts a huge tool result, and the concurrency queue serialises
- * these spawns together with the tools'. Resources are read-only by construction, so
- * OBSIDIAN_MCP_READONLY does not remove them.
+ * THE EXISTING LIMITS ALL STILL APPLY, because every call here goes through runCli: reading a note
+ * is capped exactly as a tool result is, and the concurrency queue serialises these spawns together
+ * with the tools'. The LISTINGS are the one exception, and MAX_LISTING_BYTES below says why.
+ * Resources are read-only by construction, so OBSIDIAN_MCP_READONLY does not remove them.
  */
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
@@ -45,7 +45,7 @@ import {
   type Resource,
 } from "@modelcontextprotocol/sdk/types.js";
 
-import { MAX_OUTPUT_BYTES, runCli, truncationNotice, withVault } from "./cli.js";
+import { runCli, truncationNotice, withVault } from "./cli.js";
 import { normalizeVaultPath } from "./paths.js";
 
 // ---------------------------------------------------------------------------
@@ -213,6 +213,29 @@ export function decodeCursor(cursor: string | undefined): ListPosition {
 // Reading the vault through the CLI
 // ---------------------------------------------------------------------------
 
+/**
+ * The output cap for the two listing commands this module is built on -- `folders`, which gives it
+ * the spine of the walk, and `files folder=X ext=md`, which gives it the notes of each folder.
+ *
+ * WHY IT IS NOT MAX_OUTPUT_BYTES. That one is sized for text that reaches the model, and it has to
+ * be: a note or a search result is spent context. A listing is not. Its text is split into lines
+ * here, the names become URIs, and the string is dropped before anyone sees it -- so its size costs
+ * memory for the length of one spawn and nothing else. Sharing the model's budget only bought
+ * missing notes.
+ *
+ * WHAT IT COST, measured through resources/list on a 3212-note, 431-folder vault: `folders` alone
+ * prints 46,855 bytes, 94% of the 50,000-byte default, so the walk was one folder away from losing
+ * its spine; 9 of the listings it needs are over that default -- the vault root's is 399,636 bytes
+ * -- and a full walk reported 16 pages, 1937 notes and 9 truncation warnings. At the cap below the
+ * same walk reports 22 pages, 3212 notes and no warnings.
+ *
+ * WHY THIS NUMBER. Five times the largest listing that vault produces, so a vault several times its
+ * size still lists whole; still a cap, because the point of capping was never to trust the input.
+ * The truncation reporting underneath is untouched: raise this and it fires less, it does not stop
+ * existing. Override with OBSIDIAN_MCP_MAX_LISTING_BYTES.
+ */
+export const MAX_LISTING_BYTES = readPositiveInt("OBSIDIAN_MCP_MAX_LISTING_BYTES", 2_000_000);
+
 /** One listing command's answer: the lines it produced, and whether the output cap cut them. */
 interface Listing {
   lines: string[];
@@ -230,7 +253,7 @@ interface Listing {
  * only half received is not a path.
  */
 async function listLines(args: string[]): Promise<Listing> {
-  const result = await runCli(withVault(args), "slow");
+  const result = await runCli(withVault(args), "slow", MAX_LISTING_BYTES);
   if (!result.ok) {
     // A folder that was deleted between the spine call and this one is not an error worth
     // failing the whole page for: it lists as empty and the walk carries on.
@@ -333,9 +356,9 @@ function folderResource(path: string, description: string): Resource {
 function truncatedFolderResource(path: string): Resource {
   return folderResource(
     path,
-    `${path || ROOT_NAME}: its file listing exceeded the ${MAX_OUTPUT_BYTES}-byte output cap, so ` +
-      "the notes it holds directly are NOT all in this list. Read this folder resource, narrow " +
-      "the search with obsidian_list_files, or raise OBSIDIAN_MCP_MAX_OUTPUT_BYTES."
+    `${path || ROOT_NAME}: its file listing exceeded the ${MAX_LISTING_BYTES}-byte listing cap, ` +
+      "so the notes it holds directly are NOT all in this list. Read this folder resource, narrow " +
+      "the search with obsidian_list_files, or raise OBSIDIAN_MCP_MAX_LISTING_BYTES."
   );
 }
 
@@ -343,11 +366,11 @@ function truncatedFolderResource(path: string): Resource {
  * One page of `resources/list`: the vault's notes, folder by folder, in the order the CLI reports
  * its folders.
  *
- * Why folder by folder rather than one flat listing of the vault. Measured on a 5496-file vault:
- * `files ext=md` alone prints 399,636 bytes for 3212 notes, eight times the default output cap, so
- * a flat listing is cut to roughly an eighth of the vault and cannot be paged past. Scoping each
- * call to one folder keeps every one of them small -- 422 of the 430 folders measured under the
- * cap -- and gives the client the area/category/note descent the tree already has.
+ * Why folder by folder rather than one flat listing of the vault. Not size -- MAX_LISTING_BYTES
+ * swallows the whole 399,636-byte `files ext=md` of the vault measured there -- but pagination and
+ * shape: one flat listing has no boundary a cursor could point at that survives the next call, and
+ * the client gets a heap of 3212 paths instead of the area/category/note descent the tree already
+ * has. Per folder, the cursor is a folder index plus an offset, and both stay meaningful.
  */
 async function listResources(cursor: string | undefined): Promise<ListResourcesResult> {
   const position = decodeCursor(cursor);
@@ -395,10 +418,11 @@ async function readNote(uri: string, path: string): Promise<ReadResourceResult> 
   }
 
   // The cap already cut the text inside runCli; saying so is this module's job, and it has to be
-  // said in the body because a resource has nowhere else to put it.
+  // said in the body because a resource has nowhere else to put it. A note's text IS handed to the
+  // client, so this call keeps the default cap -- the listing cap above is not for it.
   const text =
     result.truncatedBytes > 0
-      ? `${result.stdout}\n\n${truncationNotice(result.truncatedBytes, MAX_OUTPUT_BYTES)}`
+      ? `${result.stdout}\n\n${truncationNotice(result.truncatedBytes, result.maxOutputBytes)}`
       : result.stdout;
 
   return { contents: [{ uri, mimeType: mimeTypeFor(path), text }] };
@@ -434,9 +458,9 @@ async function readFolder(uri: string, path: string): Promise<ReadResourceResult
     ...(folders.truncated || notes.truncated
       ? {
           incomplete:
-            `The listing this folder was built from hit the ${MAX_OUTPUT_BYTES}-byte output cap, ` +
-            "so the children above are not all of them. Narrow the question with " +
-            "obsidian_list_files / obsidian_list_folders, or raise OBSIDIAN_MCP_MAX_OUTPUT_BYTES.",
+            `The listing this folder was built from hit the ${MAX_LISTING_BYTES}-byte listing ` +
+            "cap, so the children above are not all of them. Narrow the question with " +
+            "obsidian_list_files / obsidian_list_folders, or raise OBSIDIAN_MCP_MAX_LISTING_BYTES.",
         }
       : {}),
   };

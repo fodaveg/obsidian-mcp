@@ -200,7 +200,8 @@ reads: `obsidian_read` on a note you know, and check that the text comes back.
 | `OBSIDIAN_CLI_TIMEOUT_SLOW_MS` | Timeout for the vault-wide ones (searches, listings, tags, backlinks, `obsidian_move`/`obsidian_rename`, `obsidian_exec`) | three times `OBSIDIAN_CLI_TIMEOUT_MS` |
 | `OBSIDIAN_CLI_KILL_GRACE_MS` | How long a timed-out CLI process gets between `SIGTERM` and `SIGKILL` | `2000` |
 | `OBSIDIAN_MCP_CONCURRENCY` | How many CLI processes may run at once. They all talk to the same Obsidian instance, and running them in parallel is what makes it stall, so calls are queued one at a time by default | `1` |
-| `OBSIDIAN_MCP_MAX_OUTPUT_BYTES` | Cap on how much a single call may return. Past it the output is cut and the reply says how much was dropped and how to narrow the query. It applies to [resources](#the-vault-as-resources) too | `50000` |
+| `OBSIDIAN_MCP_MAX_OUTPUT_BYTES` | Cap on how much a single call may return **to the client**. Past it the output is cut and the reply says how much was dropped and how to narrow the query. It covers reading a note as a [resource](#the-vault-as-resources) too | `50000` |
+| `OBSIDIAN_MCP_MAX_LISTING_BYTES` | Cap on the `folders` and `files` listings the [resource](#the-vault-as-resources) walk is built from. Their text never reaches the client — it is parsed into URIs and dropped — so this is a memory limit, not a context one, and it is much larger | `2000000` |
 | `OBSIDIAN_MCP_RESOURCE_PAGE_SIZE` | How many resources one `resources/list` page carries before it hands back a `nextCursor` | `200` |
 | `OBSIDIAN_MCP_READONLY` | If `1`, the tools that write to the vault are not registered at all: the model only gets the ones that read. See [Read-only mode](#read-only-mode) | (empty — the write tools are registered) |
 | `OBSIDIAN_MCP_ENABLE_EXEC` | If `1`, registers the `obsidian_exec` escape hatch. Read [Security model](#security-model) first | (empty — tool not registered) |
@@ -379,19 +380,27 @@ spawns against your running Obsidian, and on one run out of three the app stalle
 long enough for a call to hit its timeout. Attaching a note or reading a folder,
 which is what actually happens in use, is one process.
 
-**The output cap applies here exactly as it does to a tool.** A note longer than
+**The output cap applies to a note, not to the listings.** A note longer than
 [`OBSIDIAN_MCP_MAX_OUTPUT_BYTES`](#environment-variables) comes back cut, with
-the same notice appended saying how much was dropped. The same cap also limits
-the listings the walk is built from, and this is the part worth knowing: on the
-vault measured above, 8 of its 431 folders hold more than 50 kB of paths, and for
-those the listing is incomplete. The server never passes that off as a short
-folder — `complete: false` in the folder's JSON, and in `resources/list` the
-folder itself appears in place of its missing notes, saying why. Raising the cap
-removes the gap: at `OBSIDIAN_MCP_MAX_OUTPUT_BYTES=1000000` the same walk listed
-all 3212 notes with no warnings. Notes in the vault **root** are the awkward
-case, because the CLI's `files` command cannot be scoped to it: listing them
-means listing the whole vault, so on a large vault they are what goes missing
-first.
+the same notice appended saying how much was dropped: its text is what you read,
+so it is spent context exactly as a tool result is. The `folders` and `files`
+listings the walk is *built* from are not — they are split into names, turned
+into URIs and dropped — so they answer to their own, far larger
+[`OBSIDIAN_MCP_MAX_LISTING_BYTES`](#environment-variables). They used to share
+the 50 kB one, and on the vault measured above that cost 1275 of its 3212 notes:
+`folders` alone prints 46,855 bytes of the 50,000 available, 9 of the listings a
+walk needs are over that cap, and the largest of them — the vault root's — is
+399,636 bytes. At today's defaults the same walk lists all 3212 notes, in 22
+pages, with nothing missing.
+
+**A listing that still does not fit is reported, never implied.** The server
+does not pass a cut one off as a short folder: `complete: false` in the folder's
+JSON, and in `resources/list` the folder itself appears in place of its missing
+notes, saying why. Notes in the vault **root** are the awkward case, because the
+CLI's `files` command cannot be scoped to it: listing them means listing the
+whole vault, so on a vault several times the size of the one above they are what
+goes missing first, and raising `OBSIDIAN_MCP_MAX_LISTING_BYTES` is what buys
+them back.
 
 **Resources ignore `OBSIDIAN_MCP_READONLY`.** Reading is the only thing a
 resource can do — there is no `resources/write` — so read-only mode has nothing
