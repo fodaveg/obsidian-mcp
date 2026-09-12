@@ -26,6 +26,7 @@
     "lint": "eslint .",
     "start": "node dist/index.js",
     "test": "npm run build && node --test scripts/*.test.mjs",
+    "check:readme": "npm run build && node scripts/check-readme-tools.mjs",
     "dev": "tsc -p . --watch",
     "prepublishOnly": "npm run build && npm test"
   },

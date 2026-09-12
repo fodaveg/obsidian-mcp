@@ -29,3 +29,9 @@ jobs:
       # `obsidian` binary, which does not exist on the runner.
       - name: Test
         run: npm test
+
+      # The README's tool table is maintained by hand and drifted twice in one
+      # day, so it is compared with the server's own `listTools`. It starts the
+      # server over stdio and calls no tool, so it needs no vault either.
+      - name: Check the README's tool table
+        run: npm run check:readme

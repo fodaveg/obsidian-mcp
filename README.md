@@ -186,11 +186,17 @@ The **Writes** column is the one to read before deciding what to auto-approve in
 your MCP client. It is also exactly the set that disappears under
 [`OBSIDIAN_MCP_READONLY=1`](#read-only-mode).
 
+This table is checked mechanically by `npm run check:readme`, which runs in CI:
+it asks the server for its tool list and fails if a row, a parameter or a tick
+does not match. Parameters go in the third column, each one in `backticks`;
+anything inside parentheses is ignored, which is where enum values and prose
+belong (`format` (`tree`/`md`/`json`)).
+
 | Tool | What it does | Main parameters | Writes |
 | --- | --- | --- | :---: |
 | `obsidian_read` | Read a note | `file` \| `path` | |
 | `obsidian_outline` | Show a note's heading tree without its body | `file` \| `path`, `format` (`tree`/`md`/`json`), `total` | |
-| `obsidian_list_files` | List files in the vault (plain text, one path per line — the CLI's `files` command has no JSON output) | `folder`, `ext` | |
+| `obsidian_list_files` | List files in the vault (plain text, one path per line — the CLI's `files` command has no JSON output) | `folder`, `ext`, `total` | |
 | `obsidian_list_folders` | List the folder structure as a flat list of paths, whole or below one folder | `folder`, `total` | |
 | `obsidian_create` | Create a note | `name`, `path`, `content`, `template`, `overwrite` | ✔ |
 | `obsidian_append` | Append to an existing note | `file` \| `path`, `content` | ✔ |
@@ -220,7 +226,7 @@ your MCP client. It is also exactly the set that disappears under
 | `obsidian_tags` | List tags, vault-wide or for one note | `file` \| `path`, `byCount`, `json`, `total` | |
 | `obsidian_tag_info` | Show how often one tag is used, and in which notes | `name`, `verbose`, `total` | |
 | `obsidian_backlinks` | List notes linking to a note | `file` \| `path`, `json`, `total` | |
-| `obsidian_links` | List a note's outgoing links | `file` \| `path` | |
+| `obsidian_links` | List a note's outgoing links | `file` \| `path`, `total` | |
 | `obsidian_orphans` | List notes nothing links to (no incoming links); their own outgoing links do not matter | `all`, `total` | |
 | `obsidian_unresolved_links` | List links that point nowhere | `json`, `total` | |
 | `obsidian_deadends` | List notes that link to nothing | `all`, `total` | |
