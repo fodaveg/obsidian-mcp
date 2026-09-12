@@ -300,19 +300,37 @@ function tryParseJson(text: string): unknown | undefined {
 }
 
 /**
- * Builds `key=value` style CLI arguments from an object, skipping undefined/empty
- * values. Values are passed as-is (the CLI expects `key=value`, not shell-quoted --
- * we bypass the shell entirely via spawn, so no quoting is needed).
+ * The token names this server is allowed to send. Keys come from the code, never from the
+ * model, and they stay that way because of this check: a key is half a CLI token, so whoever
+ * chooses it chooses which option the CLI sees. A property named `vault` once became the token
+ * `vault=Other`, which made withVault leave its own out and sent the whole call to another
+ * vault. The rule belongs here, in the code, rather than in someone's memory.
+ */
+const SAFE_KEY = /^[a-z][a-z0-9_-]*$/;
+
+/**
+ * Builds `key=value` style CLI arguments from an object, skipping only the keys whose value is
+ * `undefined`. Values are passed as-is (the CLI expects `key=value`, not shell-quoted -- we
+ * bypass the shell entirely via spawn, so no quoting is needed).
+ *
+ * An EMPTY STRING is a value, not an absence: it is how you ask for an empty property or an
+ * empty line in the daily note, and dropping it turned the call into one without that argument,
+ * so the model was told it had cleared a field that never changed.
  *
  * Booleans become a bare token (`overwrite`, `permanent`), which is the only form
  * the CLI understands: it silently ignores `--overwrite`, so `create ... --overwrite`
  * used to write a duplicate note instead of overwriting, and `delete ... --permanent`
  * moved the note to the trash. A false boolean emits nothing.
+ *
+ * @throws If a key is not a plain CLI token name (see SAFE_KEY).
  */
 export function kv(params: Record<string, string | number | boolean | undefined>): string[] {
   const out: string[] = [];
   for (const [key, value] of Object.entries(params)) {
-    if (value === undefined || value === "") continue;
+    if (!SAFE_KEY.test(key)) {
+      throw new Error(`"${key}" is not a valid Obsidian CLI option name and was not sent.`);
+    }
+    if (value === undefined) continue;
     if (typeof value === "boolean") {
       if (value) out.push(key);
       continue;

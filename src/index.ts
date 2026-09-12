@@ -762,7 +762,9 @@ server.registerTool(
     const lines: string[] = [];
     let failed = false;
     for (const [name, value] of entries) {
-      // name= and value= are built by hand so that an empty value still reaches the CLI.
+      // The property name is the VALUE of the `name=` token, never a token name of its own:
+      // it comes from the model and an Obsidian property may legitimately be called "Due date",
+      // which kv() would (rightly) refuse as a CLI option name.
       const result: CliResult = await runCli(
         withVault(["property:set", `name=${name}`, `value=${value}`, ...kv({ type, file, path })])
       );

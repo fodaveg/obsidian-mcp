@@ -75,6 +75,25 @@ test("kv emits booleans as bare CLI tokens, never as --flags", () => {
   ]);
 });
 
-test("kv skips undefined and empty values and keeps numbers", () => {
-  assert.deepEqual(kv({ file: undefined, content: "", line: 12 }), ["line=12"]);
+test("kv skips undefined and keeps numbers", () => {
+  assert.deepEqual(kv({ file: undefined, line: 12 }), ["line=12"]);
+});
+
+test("kv sends an empty value instead of dropping the argument", () => {
+  // Asking for an empty property (or a blank line in the daily note) must reach the CLI:
+  // dropping it turns the call into one without that argument and nothing gets cleared.
+  assert.deepEqual(kv({ content: "" }), ["content="]);
+  assert.deepEqual(kv({ value: "", name: "status" }), ["value=", "name=status"]);
+});
+
+test("kv refuses a key that is not a plain CLI option name", () => {
+  // A key is half a token: `vault` as a property name once produced `vault=Other` and sent the
+  // call to a different vault. Keys come from this repo's code, and this is what keeps it so.
+  assert.throws(() => kv({ "vault=Other": "x" }), /not a valid Obsidian CLI option name/);
+  assert.throws(() => kv({ "file path": "x" }), /not a valid/);
+  assert.throws(() => kv({ Vault: "x" }), /not a valid/);
+  assert.throws(() => kv({ "": "x" }), /not a valid/);
+  assert.throws(() => kv({ "-rf": true }), /not a valid/);
+  // The names the tools actually use keep working, dashes and digits included.
+  assert.deepEqual(kv({ file: "A", "base-view": "B", v2: 3 }), ["file=A", "base-view=B", "v2=3"]);
 });
