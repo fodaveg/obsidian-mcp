@@ -52,6 +52,16 @@ const pathParam = z
   );
 const MISSING_TARGET = "Provide either `file` (note name, like a wikilink) or `path` (exact vault-relative path).";
 
+// The CLI's listing commands all take a bare `total` token that returns the count instead of the
+// list. It is the cheapest answer there is to "how many?", so every tool that lists exposes it.
+const totalParam = z
+  .boolean()
+  .default(false)
+  .describe(
+    'Return only how many results there are, not the results themselves. Use it for "how many …?" ' +
+      "questions: it answers them without paying for the whole listing."
+  );
+
 // Every tool declares `annotations`, because the spec tells clients to assume the worst when
 // they are missing -- without them, reading a note asks the user for the same confirmation as
 // deleting one. The criteria used here:
@@ -139,9 +149,10 @@ server.registerTool(
     inputSchema: {
       folder: z.string().optional().describe('Limit to a folder, e.g. "33.11 Notes".'),
       ext: z.string().optional().describe('File extension filter, e.g. "md"'),
+      total: totalParam,
     },
   },
-  async ({ folder, ext }) => respond(["files", ...kv({ folder, ext })])
+  async ({ folder, ext, total }) => respond(["files", ...kv({ folder, ext, total })])
 );
 
 server.registerTool(
@@ -438,11 +449,12 @@ server.registerTool(
       file: fileParam,
       path: pathParam,
       byCount: z.boolean().default(false).describe("Sort tags by how often they're used."),
+      total: totalParam,
     },
   },
   // Both targets are optional here: with neither, the CLI lists the whole vault.
-  async ({ file, path, byCount }) =>
-    respond(["tags", ...kv({ file, path, sort: byCount ? "count" : undefined })])
+  async ({ file, path, byCount, total }) =>
+    respond(["tags", ...kv({ file, path, sort: byCount ? "count" : undefined, total })])
 );
 
 server.registerTool(
@@ -451,11 +463,11 @@ server.registerTool(
     title: "List backlinks to a note",
     description: "Lists every note that links to the given note.",
     annotations: { readOnlyHint: true, openWorldHint: true },
-    inputSchema: { file: fileParam, path: pathParam },
+    inputSchema: { file: fileParam, path: pathParam, total: totalParam },
   },
-  async ({ file, path }) => {
+  async ({ file, path, total }) => {
     if (!file && !path) return errorResult(MISSING_TARGET);
-    return respond(["backlinks", ...kv({ file, path })]);
+    return respond(["backlinks", ...kv({ file, path, total })]);
   }
 );
 
@@ -465,11 +477,11 @@ server.registerTool(
     title: "List a note's outgoing links",
     description: "Lists every link found inside the given note.",
     annotations: { readOnlyHint: true, openWorldHint: true },
-    inputSchema: { file: fileParam, path: pathParam },
+    inputSchema: { file: fileParam, path: pathParam, total: totalParam },
   },
-  async ({ file, path }) => {
+  async ({ file, path, total }) => {
     if (!file && !path) return errorResult(MISSING_TARGET);
-    return respond(["links", ...kv({ file, path })]);
+    return respond(["links", ...kv({ file, path, total })]);
   }
 );
 
@@ -479,9 +491,9 @@ server.registerTool(
     title: "List orphan notes",
     description: "Lists notes that have no incoming or outgoing links.",
     annotations: { readOnlyHint: true, openWorldHint: true },
-    inputSchema: {},
+    inputSchema: { total: totalParam },
   },
-  async () => respond(["orphans"])
+  async ({ total }) => respond(["orphans", ...kv({ total })])
 );
 
 server.registerTool(
@@ -490,9 +502,9 @@ server.registerTool(
     title: "List unresolved links",
     description: "Lists links in the vault that don't resolve to an existing note.",
     annotations: { readOnlyHint: true, openWorldHint: true },
-    inputSchema: {},
+    inputSchema: { total: totalParam },
   },
-  async () => respond(["unresolved"])
+  async ({ total }) => respond(["unresolved", ...kv({ total })])
 );
 
 // ---------------------------------------------------------------------------
@@ -514,10 +526,11 @@ server.registerTool(
           "Group results by file and include line numbers, which is how you get the `ref` " +
             "(path:line) that obsidian_task_complete needs."
         ),
+      total: totalParam,
     },
   },
-  async ({ json, verbose }) =>
-    respond(["tasks", ...kv({ format: json ? "json" : undefined, verbose })])
+  async ({ json, verbose, total }) =>
+    respond(["tasks", ...kv({ format: json ? "json" : undefined, verbose, total })])
 );
 
 server.registerTool(
