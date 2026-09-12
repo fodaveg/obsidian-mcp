@@ -290,7 +290,13 @@ server.registerTool(
     annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: {
       query: z.string(),
-      limit: z.number().int().positive().optional(),
+      // `search` is the only exposed command with a limit: `tags` and `tasks` have none.
+      limit: z
+        .number()
+        .int()
+        .positive()
+        .default(50)
+        .describe("Max files to return. Defaults to 50 -- raise it when you need more."),
       json: z.boolean().default(true).describe("Return machine-readable JSON output."),
     },
   },
