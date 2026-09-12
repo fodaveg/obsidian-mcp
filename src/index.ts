@@ -439,10 +439,10 @@ server.registerTool(
   },
   async ({ file, path, only }) => {
     if (!file && !path) return errorResult(MISSING_TARGET);
-    return respond([
-      "wordcount",
-      ...kv({ file, path, words: only === "words", characters: only === "characters" }),
-    ], "quick");
+    return respond(
+      ["wordcount", ...kv({ file, path, words: only === "words", characters: only === "characters" })],
+      "quick"
+    );
   }
 );
 
@@ -518,10 +518,13 @@ server.registerTool(
     },
   },
   async ({ query, path, limit, caseSensitive, json, total }) =>
-    respond([
-      "search",
-      ...kv({ query, path, limit, case: caseSensitive, format: json ? "json" : undefined, total }),
-    ], "slow")
+    respond(
+      [
+        "search",
+        ...kv({ query, path, limit, case: caseSensitive, format: json ? "json" : undefined, total }),
+      ],
+      "slow"
+    )
 );
 
 server.registerTool(
@@ -556,10 +559,13 @@ server.registerTool(
     },
   },
   async ({ query, path, limit, caseSensitive, json }) =>
-    respond([
-      "search:context",
-      ...kv({ query, path, limit, case: caseSensitive, format: json ? "json" : undefined }),
-    ], "slow")
+    respond(
+      [
+        "search:context",
+        ...kv({ query, path, limit, case: caseSensitive, format: json ? "json" : undefined }),
+      ],
+      "slow"
+    )
 );
 
 // ---------------------------------------------------------------------------
@@ -990,20 +996,23 @@ server.registerTool(
     if ([Boolean(file || path), active, daily].filter(Boolean).length > 1) {
       return errorResult("Pick a single scope: `file`/`path`, `active` or `daily`.");
     }
-    return respond([
-      "tasks",
-      ...kv({
-        file,
-        path,
-        active,
-        daily,
-        done: state === "done",
-        todo: state === "todo",
-        status,
-        format: json ? "json" : undefined,
-        total,
-      }),
-    ], "slow");
+    return respond(
+      [
+        "tasks",
+        ...kv({
+          file,
+          path,
+          active,
+          daily,
+          done: state === "done",
+          todo: state === "todo",
+          status,
+          format: json ? "json" : undefined,
+          total,
+        }),
+      ],
+      "slow"
+    );
   }
 );
 
