@@ -180,7 +180,7 @@ your MCP client.
 | `obsidian_prepend` | Insert at the start of a note | `file` \| `path`, `content` | ✔ |
 | `obsidian_move` | Move or rename a note | `file` \| `path`, `to` | ✔ |
 | `obsidian_delete` | Delete a note (trash unless `permanent`) | `file` \| `path`, `permanent` | ✔ |
-| `obsidian_search` | Search the vault, with filters like `[tag:project]`, `[status:active]`, `[priority:>3]` inside the query | `query`, `limit`, `json` | |
+| `obsidian_search` | Search the vault and return the matching files, with filters like `[tag:project]`, `[status:active]`, `[priority:>3]` inside the query | `query`, `path`, `limit`, `caseSensitive`, `json`, `total` | |
 | `obsidian_daily_read` | Read today's daily note (or another date's) | `date` | |
 | `obsidian_daily_append` | Append to today's daily note | `content` | ✔ |
 | `obsidian_daily_prepend` | Insert at the start of today's daily note | `content` | ✔ |

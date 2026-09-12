@@ -296,11 +296,19 @@ server.registerTool(
   {
     title: "Search the vault",
     description:
-      "Full-text search across the vault. Supports structured filters inside the query string, e.g. " +
-      '"[tag:project]", "[status:active]", "[priority:>3]".',
+      "Full-text search across the vault; returns the matching files, not the matching lines " +
+      "(use obsidian_search_context for those). Supports structured filters inside the query " +
+      'string, e.g. "[tag:project]", "[status:active]", "[priority:>3]".',
     annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: {
       query: z.string(),
+      path: z
+        .string()
+        .optional()
+        .describe(
+          'Limit the search to one folder, e.g. "33.11 Notes". The cheapest way to cut the noise ' +
+            "when you already know where the answer lives."
+        ),
       // `search` is the only exposed command with a limit: `tags` and `tasks` have none.
       limit: z
         .number()
@@ -308,11 +316,19 @@ server.registerTool(
         .positive()
         .default(50)
         .describe("Max files to return. Defaults to 50 -- raise it when you need more."),
+      caseSensitive: z
+        .boolean()
+        .default(false)
+        .describe("Match upper/lower case exactly. Off by default, as in Obsidian's own search."),
       json: z.boolean().default(true).describe("Return machine-readable JSON output."),
+      total: totalParam,
     },
   },
-  async ({ query, limit, json }) =>
-    respond(["search", ...kv({ query, limit, format: json ? "json" : undefined })])
+  async ({ query, path, limit, caseSensitive, json, total }) =>
+    respond([
+      "search",
+      ...kv({ query, path, limit, case: caseSensitive, format: json ? "json" : undefined, total }),
+    ])
 );
 
 // ---------------------------------------------------------------------------
