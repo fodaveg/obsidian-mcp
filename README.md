@@ -107,8 +107,10 @@ formatting, and the resource URIs and list cursor. They never touch your vault o
 invoke the `obsidian` binary.
 `npm run lint` runs ESLint over `src/`, `scripts/` and the config itself.
 `npm run check:readme` compares the [tool table](#included-tools) with the tools the
-server registers, so a new parameter cannot land with a stale row; it starts the
-server over stdio and calls no tool, so it needs no vault either. All three, plus
+server registers, so a new parameter cannot land with a stale row, and the
+[resource URIs](#the-vault-as-resources) with the templates and prefixes the server
+actually offers; it starts the server over stdio, calls no tool and reads no
+resource, so it needs no vault either. All three, plus
 the build, run on every push and pull request (see `.github/workflows/ci.yml`).
 
 ## Configure it in Claude Desktop

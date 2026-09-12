@@ -31,7 +31,9 @@ jobs:
         run: npm test
 
       # The README's tool table is maintained by hand and drifted twice in one
-      # day, so it is compared with the server's own `listTools`. It starts the
-      # server over stdio and calls no tool, so it needs no vault either.
-      - name: Check the README's tool table
+      # day, so it is compared with the server's own `listTools`, and the
+      # documented resource URIs with the templates the server offers. It starts
+      # the server over stdio, calls no tool and reads no resource, so it needs
+      # no vault either.
+      - name: Check the README against the server
         run: npm run check:readme
