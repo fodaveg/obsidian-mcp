@@ -9,7 +9,10 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   {
-    ignores: ["dist/**", "node_modules/**"],
+    // `.claude/` holds throwaway git worktrees for coding agents: their copies of
+    // this repo are not ours to lint, and their nested paths dodge the per-directory
+    // layers below.
+    ignores: ["dist/**", "node_modules/**", ".claude/**"],
   },
 
   js.configs.recommended,
