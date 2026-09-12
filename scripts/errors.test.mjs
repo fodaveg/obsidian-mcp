@@ -3,7 +3,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { looksLikeCliError } from "../dist/cli.js";
+import { describeArgs, looksLikeCliError } from "../dist/cli.js";
 
 test("spots the CLI's own one-line errors, which it prints while exiting 0", () => {
   assert.equal(looksLikeCliError('Error: File "no-existe-jamas-12345.md" not found.'), true);
@@ -31,4 +31,20 @@ test("leaves ordinary output alone", () => {
 test("empty output is not an error", () => {
   assert.equal(looksLikeCliError(""), false);
   assert.equal(looksLikeCliError("   \n  "), false);
+});
+
+test("describeArgs keeps the command readable but not the note's text", () => {
+  const note = "x".repeat(1234);
+  const rendered = describeArgs(["daily:append", `content=${note}`]);
+  assert.equal(rendered, "daily:append content=<1234 chars>");
+  assert.equal(rendered.includes(note), false);
+});
+
+test("describeArgs leaves short values and bare options alone", () => {
+  assert.equal(
+    describeArgs(["tasks", "path=33.11 Notes/My Note.md", "format=json", "total"]),
+    "tasks path=33.11 Notes/My Note.md format=json total"
+  );
+  // A value with an = inside it is only split once, so the key stays the key.
+  assert.equal(describeArgs(["search", "query=a=b"]), "search query=a=b");
 });

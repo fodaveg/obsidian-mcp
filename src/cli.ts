@@ -146,6 +146,29 @@ export function truncationNotice(droppedBytes: number, maxBytes: number): string
   );
 }
 
+/** Longest argument value quoted verbatim in a message. Past it, only its size is reported. */
+const MAX_ARG_VALUE_CHARS = 60;
+
+/**
+ * Renders a command line for an error message with the long values left out.
+ *
+ * `content=` carries the whole text of a note, and an error message ends up in the MCP client's
+ * log: a daily:append that hit the timeout used to copy the note's text outside the vault and
+ * outside whatever encryption it has. Keys stay, short values stay (they are what makes the
+ * message useful -- which note, which format), and anything long becomes `<1234 chars>`.
+ */
+export function describeArgs(args: string[]): string {
+  return args
+    .map((token) => {
+      const split = token.indexOf("=");
+      if (split < 0) return token; // a bare option, e.g. `total`
+      const value = token.slice(split + 1);
+      if (value.length <= MAX_ARG_VALUE_CHARS) return token;
+      return `${token.slice(0, split)}=<${value.length} chars>`;
+    })
+    .join(" ");
+}
+
 /**
  * True when the CLI's output is one of its own error messages.
  *
@@ -239,7 +262,7 @@ function spawnCli(args: string[], timeoutMs: number): Promise<CliResult> {
       // is still escalated above, so nothing is left running.
       fail(
         new Error(
-          `Timed out after ${timeoutMs}ms waiting for "${CLI_BIN} ${args.join(" ")}". ` +
+          `Timed out after ${timeoutMs}ms waiting for "${CLI_BIN} ${describeArgs(args)}". ` +
             `Is Obsidian running with CLI support enabled (Settings → General)?`
         )
       );
