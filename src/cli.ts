@@ -6,11 +6,47 @@ const CLI_BIN = process.env.OBSIDIAN_CLI_BIN?.trim() || "obsidian";
 /** Optional vault name/path to target when the user has more than one vault open. */
 const DEFAULT_VAULT = process.env.OBSIDIAN_VAULT?.trim();
 
-/** How long to wait for the CLI (and therefore the running Obsidian app) to respond. */
-const TIMEOUT_MS = Number(process.env.OBSIDIAN_CLI_TIMEOUT_MS) || 20_000;
+/** Reads a positive integer from the environment, falling back when it is unset or nonsense. */
+function readPositiveInt(name: string, fallback: number): number {
+  const raw = Number(process.env[name]);
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : fallback;
+}
 
-/** Default cap for a single CLI stream, in bytes. Roughly 12-15k tokens of plain text. */
-const DEFAULT_MAX_OUTPUT_BYTES = 50_000;
+/**
+ * How long to wait for the CLI (and therefore the running Obsidian app) to respond, per kind of
+ * call: reading one note is not the same job as searching a whole vault, and a single global
+ * number has to be generous enough for the second, which leaves the first hanging for ages.
+ *
+ * OBSIDIAN_CLI_TIMEOUT_MS remains the baseline, so raising it (a big or slow vault) still moves
+ * all three; the other two variables override their tier on top of that.
+ */
+const BASE_TIMEOUT_MS = readPositiveInt("OBSIDIAN_CLI_TIMEOUT_MS", 20_000);
+
+export const TIMEOUTS = {
+  /** One note, one folder, one property: whatever should come back almost at once. */
+  quick: readPositiveInt("OBSIDIAN_CLI_TIMEOUT_QUICK_MS", Math.round(BASE_TIMEOUT_MS / 2)),
+  /** Anything else, writes included. */
+  normal: BASE_TIMEOUT_MS,
+  /** Vault-wide work: searching, listing every file, rewriting links on a move. */
+  slow: readPositiveInt("OBSIDIAN_CLI_TIMEOUT_SLOW_MS", BASE_TIMEOUT_MS * 3),
+} as const;
+
+export type TimeoutTier = keyof typeof TIMEOUTS;
+
+/**
+ * Grace given to a timed-out process between SIGTERM and SIGKILL. SIGTERM first so the CLI can
+ * drop its connection to the app tidily; SIGKILL only for one that ignores it.
+ */
+const KILL_GRACE_MS = readPositiveInt("OBSIDIAN_CLI_KILL_GRACE_MS", 2_000);
+
+/**
+ * How many CLI processes may talk to Obsidian at once. One by default: they all reach the same
+ * running app, and firing them in parallel is what makes it stall. Measured: twelve deletes in
+ * a row stopped answering on the eighth for over two minutes, while the binary replied normally
+ * again moments later -- contention, not a genuine timeout. Raise OBSIDIAN_MCP_CONCURRENCY only
+ * if you have measured that your setup takes it.
+ */
+const MAX_CONCURRENCY = readPositiveInt("OBSIDIAN_MCP_CONCURRENCY", 1);
 
 /**
  * How much of each stream is handed back to the MCP client. Listing a large vault or
@@ -18,12 +54,7 @@ const DEFAULT_MAX_OUTPUT_BYTES = 50_000;
  * context or blows past the client's maximum message size. Override with
  * OBSIDIAN_MCP_MAX_OUTPUT_BYTES.
  */
-const MAX_OUTPUT_BYTES = readMaxOutputBytes();
-
-function readMaxOutputBytes(): number {
-  const raw = Number(process.env.OBSIDIAN_MCP_MAX_OUTPUT_BYTES);
-  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : DEFAULT_MAX_OUTPUT_BYTES;
-}
+const MAX_OUTPUT_BYTES = readPositiveInt("OBSIDIAN_MCP_MAX_OUTPUT_BYTES", 50_000);
 
 export interface CliResult {
   ok: boolean;
@@ -134,12 +165,48 @@ export function looksLikeCliError(stdout: string): boolean {
   return !text.includes("\n");
 }
 
+// --- The queue -------------------------------------------------------------
+//
+// Waiting for a slot is NOT counted against the timeout: the timer starts once the process is
+// spawned, so a call held behind a slow search is not punished for someone else's work.
+
+let running = 0;
+const waiting: Array<() => void> = [];
+
+function acquireSlot(): Promise<void> {
+  if (running < MAX_CONCURRENCY) {
+    running++;
+    return Promise.resolve();
+  }
+  return new Promise<void>((grant) => waiting.push(grant));
+}
+
+function releaseSlot(): void {
+  const next = waiting.shift();
+  // Hand the slot straight over instead of freeing it: the count never dips and no wake-up is lost.
+  if (next) next();
+  else running--;
+}
+
 /**
- * Runs `obsidian <args...>` and captures the result. Never throws for a non-zero
- * exit code -- callers get `ok: false` plus stdout/stderr so the model can decide
- * what to do (e.g. surface the CLI's own error message back to the user).
+ * Runs `obsidian <args...>` and captures the result, one process at a time (see the queue
+ * above). Never throws for a non-zero exit code -- callers get `ok: false` plus stdout/stderr
+ * so the model can decide what to do (e.g. surface the CLI's own error message back to the
+ * user). It does reject on a timeout, on a missing binary and on a spawn error.
+ *
+ * @param args CLI tokens, already including any `vault=`.
+ * @param tier Which timeout applies. See TIMEOUTS; defaults to `normal`.
  */
-export function runCli(args: string[]): Promise<CliResult> {
+export async function runCli(args: string[], tier: TimeoutTier = "normal"): Promise<CliResult> {
+  await acquireSlot();
+  try {
+    return await spawnCli(args, TIMEOUTS[tier]);
+  } finally {
+    releaseSlot();
+  }
+}
+
+function spawnCli(args: string[], timeoutMs: number): Promise<CliResult> {
   return new Promise((resolve, reject) => {
     const child = spawn(CLI_BIN, args, {
       stdio: ["ignore", "pipe", "pipe"],
@@ -148,20 +215,48 @@ export function runCli(args: string[]): Promise<CliResult> {
 
     const stdout = new CappedStream(MAX_OUTPUT_BYTES);
     const stderr = new CappedStream(MAX_OUTPUT_BYTES);
-    let timedOut = false;
+    let settled = false;
+    let killTimer: NodeJS.Timeout | undefined;
+
+    const succeed = (result: CliResult) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+    const fail = (err: Error) => {
+      if (settled) return;
+      settled = true;
+      reject(err);
+    };
 
     const timer = setTimeout(() => {
-      timedOut = true;
-      child.kill("SIGKILL");
-    }, TIMEOUT_MS);
+      // SIGTERM first so the CLI can let go of the app cleanly, SIGKILL if it does not.
+      child.kill("SIGTERM");
+      killTimer = setTimeout(() => child.kill("SIGKILL"), KILL_GRACE_MS);
+      // The caller is answered here rather than from `close`: that event waits for the stdio
+      // pipes, and a grandchild of the CLI keeps them open after the kill (measured with a
+      // stand-in binary: a 500ms timeout only reported back after the full 5s run). The kill
+      // is still escalated above, so nothing is left running.
+      fail(
+        new Error(
+          `Timed out after ${timeoutMs}ms waiting for "${CLI_BIN} ${args.join(" ")}". ` +
+            `Is Obsidian running with CLI support enabled (Settings → General)?`
+        )
+      );
+    }, timeoutMs);
+
+    const stopTimers = () => {
+      clearTimeout(timer);
+      if (killTimer) clearTimeout(killTimer);
+    };
 
     child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
     child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
 
     child.on("error", (err) => {
-      clearTimeout(timer);
+      stopTimers();
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-        reject(
+        fail(
           new Error(
             `Could not find the "${CLI_BIN}" command. Make sure the official Obsidian CLI is installed ` +
               `and on your PATH (see https://obsidian.md/help/cli), or set OBSIDIAN_CLI_BIN to its full path.`
@@ -169,20 +264,12 @@ export function runCli(args: string[]): Promise<CliResult> {
         );
         return;
       }
-      reject(err);
+      fail(err);
     });
 
     child.on("close", (code) => {
-      clearTimeout(timer);
-      if (timedOut) {
-        reject(
-          new Error(
-            `Timed out after ${TIMEOUT_MS}ms waiting for "${CLI_BIN} ${args.join(" ")}". ` +
-              `Is Obsidian running with CLI support enabled (Settings → General)?`
-          )
-        );
-        return;
-      }
+      stopTimers();
+      if (settled) return; // already reported as a timeout
       const text = stdout.text().trim();
       const truncatedBytes = stdout.dropped + stderr.dropped;
       const result: CliResult = {
@@ -196,7 +283,7 @@ export function runCli(args: string[]): Promise<CliResult> {
       };
       const parsed = tryParseJson(result.stdout);
       if (parsed !== undefined) result.json = parsed;
-      resolve(result);
+      succeed(result);
     });
   });
 }

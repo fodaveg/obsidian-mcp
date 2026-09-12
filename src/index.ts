@@ -2,7 +2,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { formatResult, kv, runCli, withVault, type CliResult } from "./cli.js";
+import { formatResult, kv, runCli, withVault, type CliResult, type TimeoutTier } from "./cli.js";
 import { buildCreatePath } from "./paths.js";
 import { buildTaskLine } from "./tasks.js";
 
@@ -30,9 +30,13 @@ const server = new McpServer({
  * errors on stdout while exiting 0 (see looksLikeCliError in cli.ts), which is what it does for
  * a missing note or an out-of-range line. Every tool goes through here, so the detection is
  * shared rather than repeated per tool.
+ *
+ * `tier` picks the timeout (see TIMEOUTS in cli.ts): `quick` for the tools that touch one note,
+ * `slow` for the ones that sweep the vault, `normal` -- the default -- for the rest, writes
+ * included. Calls are queued, so the wait for a free slot does not eat into it.
  */
-async function respond(args: string[]) {
-  const result: CliResult = await runCli(withVault(args));
+async function respond(args: string[], tier: TimeoutTier = "normal") {
+  const result: CliResult = await runCli(withVault(args), tier);
   return {
     isError: !result.ok,
     content: [{ type: "text" as const, text: formatResult(result) }],
@@ -120,7 +124,8 @@ if (ENABLE_EXEC) {
           .describe('CLI tokens after "obsidian", e.g. ["read", "file=My Note"]'),
       },
     },
-    async ({ args }) => respond(args)
+    // No way to tell what an arbitrary command costs, so it gets the most generous timeout.
+    async ({ args }) => respond(args, "slow")
   );
 }
 
@@ -141,7 +146,7 @@ server.registerTool(
   },
   async ({ file, path }) => {
     if (!file && !path) return errorResult("Provide either `file` or `path`.");
-    return respond(["read", ...kv({ file, path })]);
+    return respond(["read", ...kv({ file, path })], "quick");
   }
 );
 
@@ -169,7 +174,7 @@ server.registerTool(
   },
   async ({ file, path, format, total }) => {
     if (!file && !path) return errorResult(MISSING_TARGET);
-    return respond(["outline", ...kv({ file, path, format, total })]);
+    return respond(["outline", ...kv({ file, path, format, total })], "quick");
   }
 );
 
@@ -187,7 +192,7 @@ server.registerTool(
       total: totalParam,
     },
   },
-  async ({ folder, ext, total }) => respond(["files", ...kv({ folder, ext, total })])
+  async ({ folder, ext, total }) => respond(["files", ...kv({ folder, ext, total })], "slow")
 );
 
 server.registerTool(
@@ -200,7 +205,7 @@ server.registerTool(
       tree: z.boolean().default(false).describe("Render as a hierarchical tree instead of a flat list."),
     },
   },
-  async ({ tree }) => respond(["folders", ...kv({ format: tree ? "tree" : undefined })])
+  async ({ tree }) => respond(["folders", ...kv({ format: tree ? "tree" : undefined })], "slow")
 );
 
 server.registerTool(
@@ -300,7 +305,8 @@ server.registerTool(
   },
   async ({ file, path, to }) => {
     if (!file && !path) return errorResult(MISSING_TARGET);
-    return respond(["move", ...kv({ file, path, to })]);
+    // Moving rewrites every wikilink pointing at the note, so it is vault-wide work.
+    return respond(["move", ...kv({ file, path, to })], "slow");
   }
 );
 
@@ -328,7 +334,8 @@ server.registerTool(
   },
   async ({ file, path, name }) => {
     if (!file && !path) return errorResult(MISSING_TARGET);
-    return respond(["rename", ...kv({ file, path, name })]);
+    // Same as move: the link rewrite spans the whole vault.
+    return respond(["rename", ...kv({ file, path, name })], "slow");
   }
 );
 
@@ -367,7 +374,7 @@ server.registerTool(
   },
   async ({ file, path }) => {
     if (!file && !path) return errorResult(MISSING_TARGET);
-    return respond(["file", ...kv({ file, path })]);
+    return respond(["file", ...kv({ file, path })], "quick");
   }
 );
 
@@ -388,7 +395,7 @@ server.registerTool(
         .describe("Return only the file count, the subfolder count or the size. Omit for all of them."),
     },
   },
-  async ({ path, info }) => respond(["folder", ...kv({ path, info })])
+  async ({ path, info }) => respond(["folder", ...kv({ path, info })], "quick")
 );
 
 server.registerTool(
@@ -413,7 +420,7 @@ server.registerTool(
     return respond([
       "wordcount",
       ...kv({ file, path, words: only === "words", characters: only === "characters" }),
-    ]);
+    ], "quick");
   }
 );
 
@@ -434,7 +441,8 @@ server.registerTool(
     },
   },
   // Both targets are optional: with neither, the CLI covers the whole vault.
-  async ({ file, path, verbose, total }) => respond(["aliases", ...kv({ file, path, verbose, total })])
+  async ({ file, path, verbose, total }) =>
+    respond(["aliases", ...kv({ file, path, verbose, total })], "slow")
 );
 
 server.registerTool(
@@ -447,7 +455,7 @@ server.registerTool(
     annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: { total: totalParam },
   },
-  async ({ total }) => respond(["recents", ...kv({ total })])
+  async ({ total }) => respond(["recents", ...kv({ total })], "quick")
 );
 
 // ---------------------------------------------------------------------------
@@ -491,7 +499,7 @@ server.registerTool(
     respond([
       "search",
       ...kv({ query, path, limit, case: caseSensitive, format: json ? "json" : undefined, total }),
-    ])
+    ], "slow")
 );
 
 server.registerTool(
@@ -529,7 +537,7 @@ server.registerTool(
     respond([
       "search:context",
       ...kv({ query, path, limit, case: caseSensitive, format: json ? "json" : undefined }),
-    ])
+    ], "slow")
 );
 
 // ---------------------------------------------------------------------------
@@ -548,7 +556,7 @@ server.registerTool(
     annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: {},
   },
-  async () => respond(["bases"])
+  async () => respond(["bases"], "quick")
 );
 
 server.registerTool(
@@ -563,7 +571,7 @@ server.registerTool(
     annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: {},
   },
-  async () => respond(["base:views"])
+  async () => respond(["base:views"], "quick")
 );
 
 server.registerTool(
@@ -592,7 +600,8 @@ server.registerTool(
   },
   async ({ file, path, view, format }) => {
     if (!file && !path) return errorResult(MISSING_TARGET);
-    return respond(["base:query", ...kv({ file, path, view, format })]);
+    // A base runs a filter over the whole vault and can return every note it matches.
+    return respond(["base:query", ...kv({ file, path, view, format })], "slow");
   }
 );
 
@@ -610,7 +619,7 @@ server.registerTool(
       date: z.string().optional().describe("ISO date, e.g. 2026-07-20. Defaults to today."),
     },
   },
-  async ({ date }) => respond(["daily:read", ...kv({ date })])
+  async ({ date }) => respond(["daily:read", ...kv({ date })], "quick")
 );
 
 server.registerTool(
@@ -655,7 +664,7 @@ server.registerTool(
     annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: { total: totalParam },
   },
-  async ({ total }) => respond(["templates", ...kv({ total })])
+  async ({ total }) => respond(["templates", ...kv({ total })], "quick")
 );
 
 server.registerTool(
@@ -679,7 +688,8 @@ server.registerTool(
         .describe("Title to feed the variables when `resolve` is on, i.e. the name of the note-to-be."),
     },
   },
-  async ({ name, resolve, title }) => respond(["template:read", ...kv({ name, resolve, title })])
+  async ({ name, resolve, title }) =>
+    respond(["template:read", ...kv({ name, resolve, title })], "quick")
 );
 
 // ---------------------------------------------------------------------------
@@ -696,7 +706,7 @@ server.registerTool(
   },
   async ({ file, path }) => {
     if (!file && !path) return errorResult(MISSING_TARGET);
-    return respond(["properties", ...kv({ file, path })]);
+    return respond(["properties", ...kv({ file, path })], "quick");
   }
 );
 
@@ -717,7 +727,7 @@ server.registerTool(
   },
   async ({ name, file, path }) => {
     if (!file && !path) return errorResult(MISSING_TARGET);
-    return respond(["property:read", ...kv({ name, file, path })]);
+    return respond(["property:read", ...kv({ name, file, path })], "quick");
   }
 );
 
@@ -809,7 +819,7 @@ server.registerTool(
   },
   // Both targets are optional here: with neither, the CLI lists the whole vault.
   async ({ file, path, byCount, total }) =>
-    respond(["tags", ...kv({ file, path, sort: byCount ? "count" : undefined, total })])
+    respond(["tags", ...kv({ file, path, sort: byCount ? "count" : undefined, total })], "slow")
 );
 
 server.registerTool(
@@ -828,7 +838,7 @@ server.registerTool(
       total: totalParam,
     },
   },
-  async ({ name, verbose, total }) => respond(["tag", ...kv({ name, verbose, total })])
+  async ({ name, verbose, total }) => respond(["tag", ...kv({ name, verbose, total })], "slow")
 );
 
 server.registerTool(
@@ -841,7 +851,8 @@ server.registerTool(
   },
   async ({ file, path, total }) => {
     if (!file && !path) return errorResult(MISSING_TARGET);
-    return respond(["backlinks", ...kv({ file, path, total })]);
+    // Backlinks are found by looking at every other note in the vault.
+    return respond(["backlinks", ...kv({ file, path, total })], "slow");
   }
 );
 
@@ -855,7 +866,7 @@ server.registerTool(
   },
   async ({ file, path, total }) => {
     if (!file && !path) return errorResult(MISSING_TARGET);
-    return respond(["links", ...kv({ file, path, total })]);
+    return respond(["links", ...kv({ file, path, total })], "quick");
   }
 );
 
@@ -867,7 +878,7 @@ server.registerTool(
     annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: { total: totalParam },
   },
-  async ({ total }) => respond(["orphans", ...kv({ total })])
+  async ({ total }) => respond(["orphans", ...kv({ total })], "slow")
 );
 
 server.registerTool(
@@ -878,7 +889,7 @@ server.registerTool(
     annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: { total: totalParam },
   },
-  async ({ total }) => respond(["unresolved", ...kv({ total })])
+  async ({ total }) => respond(["unresolved", ...kv({ total })], "slow")
 );
 
 server.registerTool(
@@ -898,7 +909,7 @@ server.registerTool(
       total: totalParam,
     },
   },
-  async ({ all, total }) => respond(["deadends", ...kv({ all, total })])
+  async ({ all, total }) => respond(["deadends", ...kv({ all, total })], "slow")
 );
 
 // ---------------------------------------------------------------------------
@@ -968,7 +979,7 @@ server.registerTool(
         format: json ? "json" : undefined,
         total,
       }),
-    ]);
+    ], "slow");
   }
 );
 
@@ -1043,7 +1054,7 @@ server.registerTool(
     annotations: { readOnlyHint: true, openWorldHint: true },
     inputSchema: {},
   },
-  async () => respond(["sync:status"])
+  async () => respond(["sync:status"], "quick")
 );
 
 server.registerTool(
@@ -1059,7 +1070,7 @@ server.registerTool(
   },
   async ({ file, path }) => {
     if (!file && !path) return errorResult(MISSING_TARGET);
-    return respond(["history", ...kv({ file, path })]);
+    return respond(["history", ...kv({ file, path })], "quick");
   }
 );
 
@@ -1086,7 +1097,7 @@ server.registerTool(
   },
   async ({ file, path, version }) => {
     if (!file && !path) return errorResult(MISSING_TARGET);
-    return respond(["history:read", ...kv({ file, path, version })]);
+    return respond(["history:read", ...kv({ file, path, version })], "quick");
   }
 );
 

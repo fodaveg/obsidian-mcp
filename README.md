@@ -150,10 +150,21 @@ registering so the `obsidian_*` tools appear.
 | --- | --- | --- |
 | `OBSIDIAN_CLI_BIN` | Path/name of the binary if `obsidian` isn't on the PATH | `obsidian` |
 | `OBSIDIAN_VAULT` | Which vault to use when you have several open. A default, **not** a restriction — see [Security model](#security-model) | (none) |
-| `OBSIDIAN_CLI_TIMEOUT_MS` | Timeout per CLI call | `20000` |
+| `OBSIDIAN_CLI_TIMEOUT_MS` | Baseline timeout per CLI call, and the one used by writes and anything not listed below | `20000` |
+| `OBSIDIAN_CLI_TIMEOUT_QUICK_MS` | Timeout for the tools that touch a single note or folder (`obsidian_read`, `obsidian_outline`, `obsidian_file_info`, the property readers…) | half of `OBSIDIAN_CLI_TIMEOUT_MS` |
+| `OBSIDIAN_CLI_TIMEOUT_SLOW_MS` | Timeout for the vault-wide ones (searches, listings, tags, backlinks, `obsidian_move`/`obsidian_rename`, `obsidian_exec`) | three times `OBSIDIAN_CLI_TIMEOUT_MS` |
+| `OBSIDIAN_CLI_KILL_GRACE_MS` | How long a timed-out CLI process gets between `SIGTERM` and `SIGKILL` | `2000` |
+| `OBSIDIAN_MCP_CONCURRENCY` | How many CLI processes may run at once. They all talk to the same Obsidian instance, and running them in parallel is what makes it stall, so calls are queued one at a time by default | `1` |
 | `OBSIDIAN_MCP_MAX_OUTPUT_BYTES` | Cap on how much a single call may return. Past it the output is cut and the reply says how much was dropped and how to narrow the query | `50000` |
 | `OBSIDIAN_MCP_ENABLE_EXEC` | If `1`, registers the `obsidian_exec` escape hatch. Read [Security model](#security-model) first | (empty — tool not registered) |
 | `OBSIDIAN_MCP_DISABLE_EXEC` | If `1`, keeps `obsidian_exec` off even if the variable above is set. Belt and braces for a shared config | (empty) |
+
+**Calls are serialised.** Every tool call spawns an `obsidian` process that reaches
+the same running Obsidian app, and firing several at once is what makes it stop
+answering (a dozen deletes in a row stalled for over two minutes on the eighth,
+while the binary replied normally again moments later). The server therefore runs
+them one at a time; the wait for a free slot does **not** count towards the
+timeout, which only starts once the process is spawned.
 
 **The `obsidian_exec` escape hatch is off by default**: you only get the curated
 `obsidian_*` tools unless you start the server with `OBSIDIAN_MCP_ENABLE_EXEC=1`.
