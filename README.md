@@ -151,8 +151,15 @@ registering so the `obsidian_*` tools appear.
 | `OBSIDIAN_CLI_BIN` | Path/name of the binary if `obsidian` isn't on the PATH | `obsidian` |
 | `OBSIDIAN_VAULT` | Which vault to use when you have several open. A default, **not** a restriction — see [Security model](#security-model) | (none) |
 | `OBSIDIAN_CLI_TIMEOUT_MS` | Timeout per CLI call | `20000` |
+| `OBSIDIAN_MCP_MAX_OUTPUT_BYTES` | Cap on how much a single call may return. Past it the output is cut and the reply says how much was dropped and how to narrow the query | `50000` |
 | `OBSIDIAN_MCP_ENABLE_EXEC` | If `1`, registers the `obsidian_exec` escape hatch. Read [Security model](#security-model) first | (empty — tool not registered) |
 | `OBSIDIAN_MCP_DISABLE_EXEC` | If `1`, keeps `obsidian_exec` off even if the variable above is set. Belt and braces for a shared config | (empty) |
+
+**The `obsidian_exec` escape hatch is off by default**: you only get the curated
+`obsidian_*` tools unless you start the server with `OBSIDIAN_MCP_ENABLE_EXEC=1`.
+Both variables accept `1`, `true` or `yes` (any casing), and
+`OBSIDIAN_MCP_DISABLE_EXEC` wins over `OBSIDIAN_MCP_ENABLE_EXEC`, so a
+configuration that already sets it keeps the tool off.
 
 ## Included tools
 
