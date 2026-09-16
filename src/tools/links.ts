@@ -121,11 +121,17 @@ export const linkTools = [
     inputSchema: {
       file: fileParam,
       path: pathParam,
-      // `backlinks` has its own `counts` token: measured on CLI 1.14.1 on 12 Sep 2026, when the
-      // CLI's catalogue was compared against these tools. What it looks like in JSON is not
-      // measured, because Obsidian was not running when this was added -- see the
-      // `output.description` below, which for that reason says nothing about the field's type.
-      counts: z.boolean().default(false).describe("Include the CLI's `count` for each linking note."),
+      // Measured on CLI 1.14.1: a plain entry is `{"file": "<path>.md"}` and with `counts` it is
+      // `{"file": …, "count": "1"}` -- the count is a STRING, as it is for `tags` and
+      // `unresolved`, and the number is how many links that note holds to the target. With
+      // `total` the count wins (`backlinks counts total` answers `7`), like everywhere else.
+      counts: z
+        .boolean()
+        .default(false)
+        .describe(
+          "Include how many links each note has to the target (as a string, in JSON). Ignored " +
+            "when `total` is set."
+        ),
       json: jsonParam,
       total: totalParam,
     },
@@ -139,9 +145,9 @@ export const linkTools = [
       key: "backlinks",
       schema: jsonRows,
       description:
-        "One entry per note linking to the target, as the CLI's own JSON, plus `count` when " +
-        "`counts` was asked for. Absent when the call asked for plain text or for `total`, and " +
-        "when the output had to be truncated.",
+        "One entry per note linking to the target, as the CLI's own JSON: `file`, plus `count` " +
+        "(a string) when `counts` was asked for. Absent when the call asked for plain text or " +
+        "for `total`, and when the output had to be truncated.",
       when: ({ json }) => json,
     },
   }),
