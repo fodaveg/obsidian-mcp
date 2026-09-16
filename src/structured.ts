@@ -12,6 +12,19 @@
  * guessed wrong degrades to text-only instead of turning a good answer into an error. Measured
  * on the Obsidian CLI 1.14.1: `tasks format=json` returns entries with exactly `status`, `text`,
  * `file` and `line`, and `line` arrives as a STRING.
+ *
+ * THIS SERVER DOES NOT REPAIR THE CLI'S SHAPE, even where the CLI is inconsistent with itself.
+ * Two cases, both measured on 1.14.1: `count` arrives as a NUMBER from `properties format=json`
+ * (`"count": 4`) but as a STRING from `tags counts` and `unresolved counts` (`"count": "3"`); and
+ * `unresolved verbose` answers `sources` as one STRING with the paths joined by ", ", not as a
+ * list. Neither is normalised here. Splitting `sources` on ", " would be a guess dressed up as a
+ * fact: a vault path can itself contain a comma and a space, and the server would hand back a
+ * list split in the wrong places with no error to say so. Turning `count` into a number would be
+ * harmless in isolation, but it would make this server the owner of every field's shape in every
+ * CLI version instead of a pass-through of one -- and a shape repaired here would stop matching
+ * what the user sees running the CLI by hand, which is the thing a client is meant to be able to
+ * trust. The practical consequence for a client: read `count` with `Number(...)` rather than
+ * assume its type, and do not split `sources` -- read it as the one string the CLI sent.
  */
 import { z } from "zod";
 

@@ -271,7 +271,7 @@ belong (`format` (`tree`/`md`/`json`)).
 | `obsidian_properties_remove` | Remove one frontmatter key. Answers `Removed: <key>` even when the note had no such key, so the reply does not prove it existed | `file` \| `path`, `key` | ✔ |
 | `obsidian_tags` | List tags, vault-wide or for one note | `file` \| `path` \| `active`, `byCount`, `counts`, `json`, `total` | |
 | `obsidian_tag_info` | Show how often one tag is used, and in which notes | `name`, `verbose`, `total` | |
-| `obsidian_backlinks` | List notes linking to a note | `file` \| `path`, `json`, `total` | |
+| `obsidian_backlinks` | List notes linking to a note | `file` \| `path`, `counts`, `json`, `total` | |
 | `obsidian_links` | List a note's outgoing links | `file` \| `path`, `total` | |
 | `obsidian_orphans` | List notes nothing links to (no incoming links); their own outgoing links do not matter | `all`, `total` | |
 | `obsidian_unresolved_links` | List links that point nowhere; `verbose` adds the notes each one is written in | `counts`, `verbose`, `json`, `total` | |
@@ -330,6 +330,19 @@ same word.
 like the other tools here; set it to `false` for the CLI's own rendering
 (tab-separated for the first three, YAML for a note's properties and a plain list
 of names for the vault's).
+
+This server passes the CLI's JSON through as it is, even where the CLI is not
+consistent with itself. Two cases, both measured on CLI 1.14.1: `count` is a
+NUMBER from `properties format=json` (`"count": 4`) but a STRING from `tags
+counts` and `unresolved counts` (`"count": "3"`); and `unresolved verbose`
+answers `sources` as one STRING with the paths joined by `", "`, not as a list.
+Splitting `sources` on `", "` would be a guess: a vault path can itself contain
+a comma and a space, so a client that split it would silently get the wrong
+list with no error to say so. Converting `count` to a number would be harmless
+by itself, but it would make this server responsible for the shape of every
+field in every CLI version, and a value repaired here would stop matching what
+the same command prints when run by hand. Read `count` with `Number(...)`
+rather than assume its type, and read `sources` as the single string it is.
 
 ## The vault as resources
 

@@ -118,19 +118,30 @@ export const linkTools = [
     title: "List backlinks to a note",
     description: "Lists every note that links to the given note.",
     annotations: { readOnlyHint: true, openWorldHint: true },
-    inputSchema: { file: fileParam, path: pathParam, json: jsonParam, total: totalParam },
+    inputSchema: {
+      file: fileParam,
+      path: pathParam,
+      // `backlinks` has its own `counts` token: measured on CLI 1.14.1 on 12 Sep 2026, when the
+      // CLI's catalogue was compared against these tools. What it looks like in JSON is not
+      // measured, because Obsidian was not running when this was added -- see the
+      // `output.description` below, which for that reason says nothing about the field's type.
+      counts: z.boolean().default(false).describe("Include the CLI's `count` for each linking note."),
+      json: jsonParam,
+      total: totalParam,
+    },
     requireTarget: true,
     command: "backlinks",
     // Backlinks are found by looking at every other note in the vault.
     tier: "slow",
-    tokens: ({ file, path, json, total }) =>
-      kv({ file, path, format: json ? "json" : undefined, total }),
+    tokens: ({ file, path, counts, json, total }) =>
+      kv({ file, path, counts, format: json ? "json" : undefined, total }),
     output: {
       key: "backlinks",
       schema: jsonRows,
       description:
-        "One entry per note linking to the target, as the CLI's own JSON. Absent when the call " +
-        "asked for plain text or for `total`, and when the output had to be truncated.",
+        "One entry per note linking to the target, as the CLI's own JSON, plus `count` when " +
+        "`counts` was asked for. Absent when the call asked for plain text or for `total`, and " +
+        "when the output had to be truncated.",
       when: ({ json }) => json,
     },
   }),

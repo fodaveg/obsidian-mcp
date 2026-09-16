@@ -22,6 +22,7 @@ const aliases = byName(fileTools, "obsidian_aliases");
 const orphans = byName(linkTools, "obsidian_orphans");
 const deadends = byName(linkTools, "obsidian_deadends");
 const tags = byName(linkTools, "obsidian_tags");
+const backlinks = byName(linkTools, "obsidian_backlinks");
 const unresolved = byName(linkTools, "obsidian_unresolved_links");
 const propertiesGet = byName(propertyTools, "obsidian_properties_get");
 const propertiesList = byName(propertyTools, "obsidian_properties_list");
@@ -186,6 +187,17 @@ test("obsidian_tags sends the counts and the sort as the separate tokens they ar
       total: false,
     }),
     ["file=My Note", "counts"]
+  );
+});
+
+test("obsidian_backlinks forwards `counts` as the bare token it is", () => {
+  assert.deepEqual(
+    backlinks.tokens({ file: "My Note", path: undefined, counts: true, json: true, total: false }),
+    ["file=My Note", "counts", "format=json"]
+  );
+  assert.deepEqual(
+    backlinks.tokens({ file: undefined, path: "A/B.md", counts: false, json: true, total: false }),
+    ["path=A/B.md", "format=json"]
   );
 });
 
