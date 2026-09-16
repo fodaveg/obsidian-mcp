@@ -1,11 +1,14 @@
 {
-  "name": "obsidian-mcp",
+  "name": "@fodaveg/obsidian-mcp",
   "version": "0.1.0",
   "description": "MCP server that wraps the official Obsidian CLI, exposing your vault to Claude and other MCP clients.",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
     "obsidian-mcp": "dist/index.js"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "files": [
     "dist",

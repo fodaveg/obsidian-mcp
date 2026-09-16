@@ -147,8 +147,25 @@ the build, run on every push and pull request (see `.github/workflows/ci.yml`).
 
 Edit `~/Library/Application Support/Claude/claude_desktop_config.json`
 (on Windows: `%APPDATA%\Claude\claude_desktop_config.json`) and add the block
-below, replacing `/absolute/path/to/obsidian-mcp` with the path where you cloned
-this repo (`pwd` from inside the folder gives it to you):
+below. The simplest way runs the server straight from npm, no clone needed:
+
+```json
+{
+  "mcpServers": {
+    "obsidian": {
+      "command": "npx",
+      "args": ["-y", "@fodaveg/obsidian-mcp"]
+    }
+  }
+}
+```
+
+The package is scoped (`@fodaveg/obsidian-mcp`) because `obsidian-mcp` on its
+own is already a different, unrelated project on npm.
+
+If you cloned this repo instead, point `command`/`args` at your local build,
+replacing `/absolute/path/to/obsidian-mcp` with the path where you cloned it
+(`pwd` from inside the folder gives it to you):
 
 ```json
 {
@@ -170,7 +187,14 @@ Restart Claude Desktop and the `obsidian_*` tools should appear.
 ## Configure it in Claude Code
 
 Register the server with the CLI (user scope makes it available in every
-project; drop `-s user` to scope it to the current repo):
+project; drop `-s user` to scope it to the current repo). The simplest way
+runs it straight from npm, no clone needed:
+
+```bash
+claude mcp add obsidian -s user -- npx -y @fodaveg/obsidian-mcp
+```
+
+If you cloned this repo instead, point it at your local build:
 
 ```bash
 claude mcp add obsidian -s user "$(which node)" /absolute/path/to/obsidian-mcp/dist/index.js
